@@ -145,8 +145,8 @@ class NNDetectionLoss:
             gt_bboxes,
             mask_gt)
 
-        target_bboxes /= stride_tensor
-        target_scores_sum = target_scores.sum()
+
+        target_scores_sum = max(target_scores.sum(), 1)
 
         # cls loss
         # loss[1] = self.varifocal_loss(pred_scores, target_scores, target_labels) / target_scores_sum  # VFL way
@@ -154,6 +154,7 @@ class NNDetectionLoss:
 
         # bbox loss
         if fg_mask.sum():
+            target_bboxes /= stride_tensor
             loss[0], loss[2], iou = self.bbox_loss(pred_distri,
                                                    pred_bboxes,
                                                    anchor_points,
