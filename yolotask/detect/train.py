@@ -49,9 +49,9 @@ GIT_INFO = None  # check_git_info()
 
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
-    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, use_amp, info_only = \
+    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, use_amp, info_only, low_gpu_mem = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
-        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.amp, opt.info_only
+        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.amp, opt.info_only, opt.low_gpu_mem
     callbacks.run('on_pretrain_routine_start')
 
     # Directories
@@ -105,16 +105,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         with torch_distributed_zero_first(LOCAL_RANK):
             weights = attempt_download(weights)  # download if not found locally
         ckpt = torch.load(weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
-        # model = Model(cfg or ckpt['model'].yaml, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
         model = Model(cfg or ckpt['model'].yaml, ch=3, nc=nc).to(device)  # create
-        # exclude = ['anchor'] if (cfg or hyp.get('anchors')) and not resume else []  # exclude keys
         csd = ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
-        # csd = intersect_dicts(csd, model.state_dict(), exclude=exclude)  # intersect
         csd = intersect_dicts(csd, model.state_dict())  # intersect
         model.load_state_dict(csd, strict=False)  # load
         LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')  # report
     else:
-        # model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
         model = Model(cfg, ch=3, nc=nc).to(device)
     if info_only:
         return None
@@ -216,8 +212,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                        prefix=colorstr('val: '))[0]
 
         if not resume:
-            # if not opt.noautoanchor:
-            #     check_anchors(dataset, model=model, thr=hyp['anchor_t'], imgsz=imgsz)  # run AutoAnchor
             model.half().float()  # pre-reduce anchor precision
 
         callbacks.run('on_pretrain_routine_end', labels, names)
@@ -227,11 +221,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         model = smart_DDP(model)
 
     # Model attributes
-    # nl = de_parallel(model).model[-1].nl  # number of detection layers (to scale hyps)
-    # hyp['box'] *= 3 / nl  # scale to layers
-    # hyp['cls'] *= nc / 80 * 3 / nl  # scale to classes and layers
-    # hyp['obj'] *= (imgsz / 640) ** 2 * 3 / nl  # scale to image size and layers
-    # hyp['label_smoothing'] = opt.label_smoothing
     model.nc = nc  # attach number of classes to model
     model.hyp = hyp  # attach hyperparameters to model
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
@@ -241,7 +230,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     t0 = time.time()
     nb = len(train_loader)  # number of batches
     nw = max(round(hyp['warmup_epochs'] * nb), 100)  # number of warmup iterations, max(3 epochs, 100 iterations)
-    # nw = min(nw, (epochs - start_epoch) / 2 * nb)  # limit warmup to < 1/2 of training
     last_opt_step = -1
     maps = np.zeros(nc)  # mAP per class
     results = (0, 0, 0, 0, 0, 0, 0)  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
@@ -286,7 +274,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Warmup
             if ni <= nw:
                 xi = [0, nw]  # x interp
-                # compute_loss.gr = np.interp(ni, xi, [0.0, 1.0])  # iou loss ratio (obj_loss = 1.0 or iou)
                 accumulate = max(1, np.interp(ni, xi, [1, nbs / batch_size]).round())
                 for j, x in enumerate(optimizer.param_groups):
                     # bias lr falls from 0.1 to lr0, all other lrs rise from 0.0 to lr0
@@ -327,8 +314,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     ema.update(model)
                 last_opt_step = ni
 
-            # clean the redundancy memory
-            # torch.cuda.empty_cache()
 
             # Log
             if RANK in {-1, 0}:
@@ -339,8 +324,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 callbacks.run('on_train_batch_end', model, ni, imgs, targets, paths, list(mloss))
                 if callbacks.stop_training:
                     return
+
         # clean the redundancy memory
-        # torch.cuda.empty_cache()
+        if low_gpu_mem:
+            torch.cuda.empty_cache()
 
         # end batch ------------------------------------------------------------------------------------------------
 
@@ -440,17 +427,16 @@ def parse_opt(known=False):
     parser.add_argument('--weights', type=str, default='', help='initial weights path')
     parser.add_argument('--cfg', type=str, default='yolov8m-base.yaml', help='model.yaml path')
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
-    parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch.yaml', help='hyperparameters path')
+    parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch.yaml', help='hyper parameters path')
     parser.add_argument('--epochs', type=int, default=100, help='total training epochs')
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs, -1 for autobatch')
     parser.add_argument('--low-gpu-mem', action='store_true',
-                        help='clean gpu cache every epoch, fit to low mem gpu, but will reduce the trainning speed')
+                        help='clean gpu cache every epoch, fit to low mem gpu, but will reduce the training speed')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
     parser.add_argument('--resume', nargs='?', const=True, default=False, help='resume most recent training')
     parser.add_argument('--nosave', action='store_true', help='only save final checkpoint')
     parser.add_argument('--noval', action='store_true', help='only validate final epoch')
-    # parser.add_argument('--noautoanchor', action='store_true', help='disable AutoAnchor')
     parser.add_argument('--noplots', action='store_true', help='save no plot files')
     parser.add_argument('--evolve', type=int, nargs='?', const=300, help='evolve hyperparameters for x generations')
     parser.add_argument('--bucket', type=str, default='', help='gsutil bucket')
@@ -470,7 +456,6 @@ def parse_opt(known=False):
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--quad', action='store_true', help='quad dataloader')
     parser.add_argument('--cos-lr', action='store_true', help='cosine LR scheduler')
-    # parser.add_argument('--label-smoothing', type=float, default=0.0, help='Label smoothing epsilon')
     parser.add_argument('--patience', type=int, default=100, help='EarlyStopping patience (epochs without improvement)')
     parser.add_argument('--freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone=10, first3=0 1 2')
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
@@ -551,13 +536,6 @@ def main(opt, callbacks=Callbacks()):
             'box': (7.5, 0.02, 0.2),  # box loss gain
             'cls': (1, 0.5, 0.2),  # cls loss gain
             'dfl': (1, 1.5, 2.0),  # cls loss gain
-            # 'cls_pw': (1, 0.5, 2.0),  # cls BCELoss positive_weight
-            # 'obj': (1, 0.2, 4.0),  # obj loss gain (scale with pixels)
-            # 'obj_pw': (1, 0.5, 2.0),  # obj BCELoss positive_weight
-            # 'iou_t': (0, 0.1, 0.7),  # IoU training threshold
-            # 'anchor_t': (1, 2.0, 8.0),  # anchor-multiple threshold
-            # 'anchors': (2, 2.0, 10.0),  # anchors per output grid (0 to ignore)
-            # 'fl_gamma': (0, 0.0, 2.0),  # focal loss gamma (efficientDet default gamma=1.5)
             'hsv_h': (1, 0.0, 0.1),  # image HSV-Hue augmentation (fraction)
             'hsv_s': (1, 0.0, 0.9),  # image HSV-Saturation augmentation (fraction)
             'hsv_v': (1, 0.0, 0.9),  # image HSV-Value augmentation (fraction)
