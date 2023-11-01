@@ -1,0 +1,87 @@
+# parameters
+nc: 80  # number of classes
+depth_multiple: 1.0  # model depth multiple
+width_multiple: 1.0  # layer channel multiple
+
+# anchors
+anchors:
+  - [12,16, 19,36, 40,28]  # P3/8
+  - [36,75, 76,55, 72,146]  # P4/16
+  - [142,110, 192,243, 459,401]  # P5/32
+
+# yolov7 backbone
+backbone:
+  # [from, number, module, args]
+
+  # 刚输入后的单独的4个卷积模块
+  [[-1, 1, SRepConv, [48, 3, 2]],  # 0-P1/2
+   [-1, 1, SRepConv, [96, 3, 2]],  # 1-P2/4
+
+    # 开始走Fuse_SiLU（1）
+   [ -1, 1, FastRepV3Block, [96, 1] ], # 2
+
+   # 卷积下采样
+   [-2, 1, SRepConv, [192, 3, 2]],  # 3
+
+    # 开始走Fuse_SiLU（2）
+   [ -1, 1, FastRepV3Block, [192, 1] ], # 4
+
+   # 卷积下采样
+   [-2, 1, SRepConv, [384, 3, 2]],  # 5
+
+   # 开始走Fuse_SiLU（3）
+   [ -1, 1, FastRepV3Block, [384, 2] ], #6
+
+   # 开始走MP-1
+   [-2, 1, SRepConv, [576, 3, 2]],  # 7
+
+   # 开始走Fuse_SiLU（4）
+   [-1, 1, FastRepV3Block, [576, 2]], #8
+
+  ]
+
+# yolov7 head
+head:
+  # 池化金字塔+卷积模块
+  [[-1, 1, RepSPPCSPSC, [576]], # 9
+
+   # 上采样(最近邻插值采样)
+   [-1, 1, nn.Upsample, [None, 2, 'nearest']],    #  -2
+
+   # 对向上-1和-2层主干网络Fuse_SiLU（3）的特征图进行拼接
+   [[-1,  6], 1, Concat, [1]],
+
+   # 开始进入Fuse_SiLU（5）
+   [-1, 1, BottleneckLanSRep, [384, 2, False] ],          # 12
+
+   # 上采样(最近邻插值采样)
+   [-1, 1, nn.Upsample, [None, 2, 'nearest']],  # -2
+
+   # 对上-1与-2层的特征图进行拼接
+   [[-1,  4], 1, Concat, [1]],
+
+   # 开始进入Fuse_SiLU（6）
+   [ -1, 1, BottleneckLanSRep, [192, 2, False] ], # 15
+
+   # 进行MP-2池化
+   [-1, 1, SRepConv, [256, 3, 2]],      # -1
+
+   # 其实逻辑上是两次拼接， -1 -3代表先对MP-2模块中的两个分支的池化结果进行拼接，33代表再对检测头Fuse_SiLU（1）的特征图进行拼接
+   [[-1, 12], 1, Concat, [1]],
+
+   # 进入Fuse_SiLU（7）
+   [ -1, 1, BottleneckLanSRep, [384, 2, False] ], #18
+
+   # 进入MP-2池化
+   [-1, 1, SRepConv, [384, 3, 2]],
+
+   # MP-2的2个分支的特征图以及SPPCSPC得到的特征图进行拼接
+   [[-1,  9], 1, Concat, [1]],
+
+   # 进入Fuse_SiLU（8）
+   [ -1, 1, BottleneckLanSRep, [384, 2, False] ], # 21
+
+   # 检测层
+   # 对输出层的三个尺寸特征图进行检测操作
+   [[15,18,21], 1, NNDetect, [nc]],   # Detect(P3, P4, P5)
+  ]
