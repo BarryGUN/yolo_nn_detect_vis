@@ -60,7 +60,7 @@ class NNDetectionLoss:
     # Compute losses
     def __init__(self, model, use_dfl=True):
         device = next(model.parameters()).device  # get model device
-        h = model.hyp  # hyperparameters
+        # h = model.hyp  # hyperparameters
 
         # Define criteria
         # BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["cls_pw"]], device=device), reduction='none')
@@ -77,7 +77,7 @@ class NNDetectionLoss:
         m = de_parallel(model).model[-1]  # Detect() module
         self.balance = {3: [4.0, 1.0, 0.4]}.get(m.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
         self.BCEcls = nn.BCEWithLogitsLoss(reduction='none')
-        self.hyp = h
+        self.hyp = model.hyp
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
