@@ -231,7 +231,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # hyp['box'] *= 3 / nl  # scale to layers
     # hyp['cls'] *= nc / 80 * 3 / nl  # scale to classes and layers
     # hyp['obj'] *= (imgsz / 640) ** 2 * 3 / nl  # scale to image size and layers
-    hyp['label_smoothing'] = opt.label_smoothing
+    # hyp['label_smoothing'] = opt.label_smoothing
     model.nc = nc  # attach number of classes to model
     model.hyp = hyp  # attach hyperparameters to model
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
@@ -470,7 +470,7 @@ def parse_opt(known=False):
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--quad', action='store_true', help='quad dataloader')
     parser.add_argument('--cos-lr', action='store_true', help='cosine LR scheduler')
-    parser.add_argument('--label-smoothing', type=float, default=0.0, help='Label smoothing epsilon')
+    # parser.add_argument('--label-smoothing', type=float, default=0.0, help='Label smoothing epsilon')
     parser.add_argument('--patience', type=int, default=100, help='EarlyStopping patience (epochs without improvement)')
     parser.add_argument('--freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone=10, first3=0 1 2')
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
@@ -548,15 +548,16 @@ def main(opt, callbacks=Callbacks()):
             'warmup_epochs': (1, 0.0, 5.0),  # warmup epochs (fractions ok)
             'warmup_momentum': (1, 0.0, 0.95),  # warmup initial momentum
             'warmup_bias_lr': (1, 0.0, 0.2),  # warmup initial bias lr
-            'box': (1, 0.02, 0.2),  # box loss gain
-            'cls': (1, 0.2, 4.0),  # cls loss gain
-            'cls_pw': (1, 0.5, 2.0),  # cls BCELoss positive_weight
-            'obj': (1, 0.2, 4.0),  # obj loss gain (scale with pixels)
-            'obj_pw': (1, 0.5, 2.0),  # obj BCELoss positive_weight
-            'iou_t': (0, 0.1, 0.7),  # IoU training threshold
+            'box': (7.5, 0.02, 0.2),  # box loss gain
+            'cls': (1, 0.5, 0.2),  # cls loss gain
+            'dfl': (1, 1.5, 2.0),  # cls loss gain
+            # 'cls_pw': (1, 0.5, 2.0),  # cls BCELoss positive_weight
+            # 'obj': (1, 0.2, 4.0),  # obj loss gain (scale with pixels)
+            # 'obj_pw': (1, 0.5, 2.0),  # obj BCELoss positive_weight
+            # 'iou_t': (0, 0.1, 0.7),  # IoU training threshold
             # 'anchor_t': (1, 2.0, 8.0),  # anchor-multiple threshold
             # 'anchors': (2, 2.0, 10.0),  # anchors per output grid (0 to ignore)
-            'fl_gamma': (0, 0.0, 2.0),  # focal loss gamma (efficientDet default gamma=1.5)
+            # 'fl_gamma': (0, 0.0, 2.0),  # focal loss gamma (efficientDet default gamma=1.5)
             'hsv_h': (1, 0.0, 0.1),  # image HSV-Hue augmentation (fraction)
             'hsv_s': (1, 0.0, 0.9),  # image HSV-Saturation augmentation (fraction)
             'hsv_v': (1, 0.0, 0.9),  # image HSV-Value augmentation (fraction)

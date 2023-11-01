@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from utils.general import xywh2xyxy
-from utils.loss.loss_utils import smooth_BCE, FocalLoss, QFocalLoss
+from utils.loss.loss_utils import smooth_BCE, QFocalLoss
 from utils.metrics import bbox_iou
 from utils.detect.assigner.tal.anchor_generator import dist2bbox, make_anchors, bbox2dist
 from utils.detect.assigner.tal.assigner import TaskAlignedAssigner
@@ -67,7 +67,7 @@ class NNDetectionLoss:
         BCEcls = nn.BCEWithLogitsLoss(reduction='none')
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
-        self.cp, self.cn = smooth_BCE(eps=h.get("label_smoothing", 0.0))  # positive, negative BCE targets
+        # self.cp, self.cn = smooth_BCE(eps=h.get("label_smoothing", 0.0))  # positive, negative BCE targets
 
         # # Focal loss
         # g = h["fl_gamma"]  # focal loss gamma
@@ -113,8 +113,6 @@ class NNDetectionLoss:
         if self.use_dfl:
             b, a, c = pred_dist.shape  # batch, anchors, channels
             pred_dist = pred_dist.view(b, a, 4, c // 4).softmax(3).matmul(self.proj.type(pred_dist.dtype))
-            # pred_dist = pred_dist.view(b, a, c // 4, 4).transpose(2,3).softmax(3).matmul(self.proj.type(pred_dist.dtype))
-            # pred_dist = (pred_dist.view(b, a, c // 4, 4).softmax(2) * self.proj.type(pred_dist.dtype).view(1, 1, -1, 1)).sum(2)
         return dist2bbox(pred_dist, anchor_points, xywh=False)
 
 
@@ -164,9 +162,6 @@ class NNDetectionLoss:
                                                    target_scores_sum,
                                                    fg_mask)
 
-        # loss[0] *= 7.5  # box gain
-        # loss[1] *= 0.5  # cls gain
-        # loss[2] *= 1.5  # dfl gain
         loss[0] *= self.hyp['box']  # box gain
         loss[1] *= self.hyp['cls']  # cls gain
         loss[2] *= self.hyp['dfl']  # dfl gain

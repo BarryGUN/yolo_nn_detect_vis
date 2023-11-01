@@ -108,7 +108,7 @@ class BaseModel(nn.Module):
 class DetectionModel(BaseModel):
     # YOLOv5 detection model
     # def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, anchors=None):  # model, input channels, number of classes
-    def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, anchors=None):  # model, input channels, number of classes
+    def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None):  # model, input channels, number of classes
         super().__init__()
         if isinstance(cfg, dict):
             self.yaml = cfg  # model dict
@@ -123,16 +123,16 @@ class DetectionModel(BaseModel):
         if nc and nc != self.yaml['nc']:
             LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
             self.yaml['nc'] = nc  # override yaml value
-        if anchors:
-            LOGGER.info(f'Overriding model.yaml anchors with anchors={anchors}')
-            self.yaml['anchors'] = round(anchors)  # override yaml value
+        # if anchors:
+        #     LOGGER.info(f'Overriding model.yaml anchors with anchors={anchors}')
+        #     self.yaml['anchors'] = round(anchors)  # override yaml value
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         self.inplace = self.yaml.get('inplace', True)
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
-        if isinstance(m, ( V6Detect, vNNDetect, NNDetect, NNDetectTiny, NNDetectSmall)):
+        if isinstance(m, (V6Detect, vNNDetect, NNDetect, NNDetectTiny, NNDetectSmall)):
             s = 256  # 2x min stride
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, ( V6Detect,vNNDetect, NNDetect)) else self.forward(x)
@@ -203,7 +203,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     LOGGER.info(
         f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'in':>3}{' ':>3}{'out':<10} {'arguments':<30}")
     # anchors, nc, gd, gw, act = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
-    nc, gd, gw, act =  d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+    nc, gd, gw, act = d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
     if act:
         Conv.default_act = eval(act)  # redefine default activation, i.e. Conv.default_act = nn.SiLU()
         LOGGER.info(f"{colorstr('activation:')} {act}")  # print

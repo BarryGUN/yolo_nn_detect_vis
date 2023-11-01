@@ -10,10 +10,10 @@ weight_decay: 0.0005  # optimizer weight decay 5e-4
 warmup_epochs: 3.0  # warmup epochs (fractions ok)
 warmup_momentum: 0.8  # warmup initial momentum
 warmup_bias_lr: 0.1  # warmup initial bias lr
-box: 7.5  # box loss gain 0.05
-cls: 0.5  # cls loss gain 0.3
-dfl: 1.5
-label_smoothing: 0.0  # (float) label smoothing (fraction)
+box: 7.5  # box loss gain  7.5
+cls: 0.5  # cls loss gain  0.5
+dfl: 1.5  # dfl loss gain  1.5
+#label_smoothing: 0.0  # (float) label smoothing (fraction)
 #cls_pw: 1.0  # cls BCELoss positive_weight 1
 #obj: 0.7  # obj loss gain (scale with pixels) 0.7
 #obj_pw: 1.0  # obj BCELoss positive_weight 1
