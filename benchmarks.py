@@ -38,14 +38,12 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 # ROOT = ROOT.relative_to(Path.cwd())  # relative
 
-from yolotask.tools import export
+import export
 from models.experimental import attempt_load
-from models.task import SegmentationModel
-from yolotask.segment.val import run as val_seg
 from utils import notebook_init
 from utils.general import LOGGER, check_yaml, file_size, print_args
 from utils.torch_utils import select_device
-from yolotask.detect.val import run as val_det
+from val import run as val_det
 
 
 def run(
@@ -78,13 +76,9 @@ def run(
                 w = export.run(weights=weights, imgsz=[imgsz], include=[f], device=device, half=half)[-1]  # all others
             assert suffix in str(w), 'export failed'
 
-            # Validate
-            if model_type == SegmentationModel:
-                result = val_seg(data, w, batch_size, imgsz, plots=False, device=device, task='speed', half=half)
-                metric = result[0][7]  # (box(p, r, map50, map), mask(p, r, map50, map), *loss(box, obj, cls))
-            else:  # DetectionModel:
-                result = val_det(data, w, batch_size, imgsz, plots=False, device=device, task='speed', half=half)
-                metric = result[0][3]  # (p, r, map50, map, *loss(box, obj, cls))
+
+            result = val_det(data, w, batch_size, imgsz, plots=False, device=device, task='speed', half=half)
+            metric = result[0][3]  # (p, r, map50, map, *loss(box, obj, cls))
             speed = result[2][1]  # times (preprocess, inference, postprocess)
             y.append([name, round(file_size(w), 1), round(metric, 4), round(speed, 2)])  # MB, mAP, t_inference
         except Exception as e:
