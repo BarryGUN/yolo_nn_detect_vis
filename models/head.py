@@ -8,7 +8,7 @@ from models.conv import Conv, SRepConv
 from utils.detect.assigner.tal.anchor_generator import make_anchors, dist2bbox
 
 
-class V6Detect(nn.Module):
+class NNDetect(nn.Module):
     # YOLOv5 Detect head for detection models
     dynamic = False  # force grid reconstruction
     export = False  # export mode
@@ -59,63 +59,6 @@ class V6Detect(nn.Module):
             b[-1].bias.data[:m.nc] = math.log(5 / m.nc / (640 / s) ** 2)  # cls (5 objects and 80 classes per 640 image)
 
 
-class vNNDetect(V6Detect):
-    def __init__(self, nc=80, ch=(), inplace=True):
-        super().__init__(nc, ch, inplace)
-
-
-class NNDetect(V6Detect):
-    def __init__(self, nc=80, ch=(), inplace=True):
-        super().__init__(nc=nc, ch=ch, inplace=inplace)
-        self.nc = nc  # number of classes
-        self.nl = len(ch)  # number of detection layers
-        self.reg_max = 16
-        self.no = nc + self.reg_max * 4  # number of outputs per anchor
-        self.inplace = inplace  # use inplace ops (e.g. slice assignment)
-        self.stride = torch.zeros(self.nl)  # strides computed during build
-
-        c2, c3 = max(ch[0] // 4, 16), max(ch[0], self.no - 4)  # channels
-        self.cv2 = nn.ModuleList(
-            nn.Sequential(SRepConv(x, c2, 3), SRepConv(c2, c2, 3), nn.Conv2d(c2, 4 * self.reg_max, 1)) for x in ch)
-        self.cv3 = nn.ModuleList(
-            nn.Sequential(SRepConv(x, c3, 3), SRepConv(c3, c3, 3), nn.Conv2d(c3, self.nc, 1)) for x in ch)
-        self.dfl = DFL(self.reg_max)
-
-
-class NNDetectTiny(NNDetect):
-    def __init__(self, nc=80, ch=(), inplace=True):
-        super().__init__(nc=nc, ch=ch, inplace=inplace)
-        self.nc = nc  # number of classes
-        self.nl = len(ch)  # number of detection layers
-        self.reg_max = 16
-        self.no = nc + self.reg_max * 4  # number of outputs per anchor
-        self.inplace = inplace  # use inplace ops (e.g. slice assignment)
-        self.stride = torch.zeros(self.nl)  # strides computed during build
-
-        c2, c3 = max(ch[0] // 4, 16), max(ch[0], self.no - 4)  # channels
-        self.cv2 = nn.ModuleList(
-            nn.Sequential(SRepConv(x, c2, 3), nn.Conv2d(c2, 4 * self.reg_max, 1)) for x in ch)
-        self.cv3 = nn.ModuleList(
-            nn.Sequential(SRepConv(x, c3, 3), nn.Conv2d(c3, self.nc, 1)) for x in ch)
-        self.dfl = DFL(self.reg_max)
-
-
-class NNDetectSmall(NNDetect):
-    def __init__(self, nc=80, ch=(), inplace=True):
-        super().__init__(nc=nc, ch=ch, inplace=inplace)
-        self.nc = nc  # number of classes
-        self.nl = len(ch)  # number of detection layers
-        self.reg_max = 16
-        self.no = nc + self.reg_max * 4  # number of outputs per anchor
-        self.inplace = inplace  # use inplace ops (e.g. slice assignment)
-        self.stride = torch.zeros(self.nl)  # strides computed during build
-
-        c2, c3 = max(ch[0] // 4, 16), max(ch[0], self.no - 4)  # channels
-        self.cv2 = nn.ModuleList(
-            nn.Sequential(Conv(x, c2, 1), SRepConv(c2, c2, 3), nn.Conv2d(c2, 4 * self.reg_max, 1)) for x in ch)
-        self.cv3 = nn.ModuleList(
-            nn.Sequential(Conv(x, c3, 1), SRepConv(c3, c3, 3), nn.Conv2d(c3, self.nc, 1)) for x in ch)
-        self.dfl = DFL(self.reg_max)
 
 
 

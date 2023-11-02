@@ -83,5 +83,5 @@ head:
 
    # 检测层
    # 对输出层的三个尺寸特征图进行检测操作
-   [[15,18,21], 1, vNNDetect, [nc]],   # Detect(P3, P4, P5)
+   [[15,18,21], 1, NNDetect, [nc]],   # Detect(P3, P4, P5)
   ]

@@ -13,10 +13,10 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
-from models.conv import SRepConv, DWConv, GhostConv, DeformConv2d
 from models.blocks import RepBlock, FastRepBlock, QARepBlock, FastRepV2Block, FastRepV3Block, FastRepDBlock, Bottleneck, \
     GhostBottleneck, FastRepVGGBlockV4, RepVGGBlock, RepNeXtBlock, FastRepVGGBlockV3, QARepVGGBlock
-from models.head import V6Detect, vNNDetect, NNDetect, NNDetectTiny, NNDetectSmall
+from models.conv import SRepConv, DWConv, GhostConv, DeformConv2d
+from models.head import NNDetect
 from models.net import BottleneckLan, C2f, BottleneckLanSRep, RepLan, C2FastRep, C2sFastRep, C2x, C2e, C2t, C2g, \
     C2RepNeXt, MS2f
 from models.net_spp import SPPF, \
@@ -97,7 +97,7 @@ class BaseModel(nn.Module):
         self = super()._apply(fn)
         m = self.model[-1]  # Detect()
 
-        if isinstance(m, (V6Detect, vNNDetect, NNDetect, NNDetectTiny, NNDetectSmall)):
+        if isinstance(m, NNDetect):
             m.stride = fn(m.stride)
             m.anchors = fn(m.anchors)
             m.strides = fn(m.strides)
@@ -132,15 +132,15 @@ class DetectionModel(BaseModel):
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
-        if isinstance(m, (V6Detect, vNNDetect, NNDetect, NNDetectTiny, NNDetectSmall)):
+        if isinstance(m, (NNDetect)):
             s = 256  # 2x min stride
             m.inplace = self.inplace
-            forward = lambda x: self.forward(x)[0] if isinstance(m, ( V6Detect,vNNDetect, NNDetect)) else self.forward(x)
+            forward = lambda x: self.forward(x)[0] if isinstance(m, NNDetect) else self.forward(x)
             m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
             # check_anchor_order(m)
             # m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
-            if isinstance(m, (V6Detect, vNNDetect, NNDetect, NNDetectTiny, NNDetectSmall)):
+            if isinstance(m, NNDetect):
                 m.bias_init()  # only run once
 
         # Init weights, biases
@@ -261,7 +261,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = sum(ch[x] for x in f)
 
         # TODO: channel, gw, gd
-        elif m in {V6Detect, vNNDetect, NNDetect, NNDetectTiny, NNDetectSmall}:
+        elif m in {NNDetect}:
             args.append([ch[x] for x in f])
             # if isinstance(args[1], int):  # number of anchors
             #     args[1] = [list(range(args[1] * 2))] * len(f)
@@ -283,38 +283,3 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         ch.append(c2)
     return nn.Sequential(*layers), sorted(save)
 
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='yolov8m-base.yaml', help='model.yaml')
-    parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
-    parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    parser.add_argument('--profile', action='store_true', help='profile model speed')
-    parser.add_argument('--line-profile', action='store_true', help='profile model speed layer by layer')
-    parser.add_argument('--test', action='store_true', help='test all yolo*.yaml')
-    opt = parser.parse_args()
-    opt.cfg = check_yaml(opt.cfg)  # check YAML
-    print_args(vars(opt))
-    device = select_device(opt.device)
-
-    # Create model
-    im = torch.rand(opt.batch_size, 3, 640, 640).to(device)
-    model = Model(opt.cfg).to(device)
-    model.eval()
-
-    # Options
-    if opt.line_profile:  # profile layer by layer
-        model(im, profile=True)
-
-    elif opt.profile:  # profile forward-backward
-        results = profile(input=im, ops=[model], n=3)
-
-    elif opt.test:  # test all models
-        for cfg in Path(ROOT / 'models').rglob('yolo*.yaml'):
-            try:
-                _ = Model(cfg)
-            except Exception as e:
-                print(f'Error in {cfg}: {e}')
-
-    else:  # report fused model summary
-        model.fuse()

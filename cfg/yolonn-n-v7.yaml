@@ -3,12 +3,6 @@ nc: 80  # number of classes
 depth_multiple: 1.0  # model depth multiple
 width_multiple: 1.0  # layer channel multiple
 
-# anchors
-anchors:
-  - [12,16, 19,36, 40,28]  # P3/8
-  - [36,75, 76,55, 72,146]  # P4/16
-  - [142,110, 192,243, 459,401]  # P5/32
-
 # yolov7 backbone
 backbone:
   # [from, number, module, args]
@@ -85,5 +79,5 @@ head:
 
    # 检测层
    # 对输出层的三个尺寸特征图进行检测操作
-   [[16,19,22], 1, vNNDetect, [nc]],   # Detect(P3, P4, P5)
+   [[16,19,22], 1, NNDetect, [nc]],   # Detect(P3, P4, P5)
   ]

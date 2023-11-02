@@ -26,3 +26,4 @@ fliplr: 0.5  # image flip left-right (probability)
 mosaic: 1.0  # image mosaic (probability)
 mixup: 0.1  # image mixup (probability)
 copy_paste: 0.2  # segment copy-paste (probability)
+label_smoothing: 0.0
