@@ -75,3 +75,5 @@ class VariFocalLoss(nn.Module):
             loss = (F.binary_cross_entropy_with_logits(pred_score.float(), gt_score.float(),
                                                        reduction="none") * weight).sum()
         return loss
+
+
