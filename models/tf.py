@@ -27,9 +27,9 @@ import torch
 import torch.nn as nn
 from tensorflow import keras
 
-from models.common import (C3, BottleneckCSP, C3x, Concat, CrossConv, DWConvTranspose2d, Focus)
+from models.common import (C3, BottleneckCSP, C3x, Concat, CrossConv, Focus)
 from models.blocks import Bottleneck
-from models.conv import Conv, DWConv, autopad
+from models.conv import Conv, DWConv, autopad, DWConvTranspose2d
 from models.net_spp import SPPF, SPP
 from models.experimental import MixConv2d, attempt_load
 from models.head import Detect, Segment

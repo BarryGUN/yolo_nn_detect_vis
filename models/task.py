@@ -6,7 +6,6 @@ Usage:
     $ python models/yolo.py --cfg yolov5s.yaml
 """
 
-import argparse
 import os
 import platform
 import sys
@@ -15,7 +14,7 @@ from pathlib import Path
 
 from models.blocks import RepBlock, FastRepBlock, QARepBlock, FastRepV2Block, FastRepV3Block, FastRepDBlock, Bottleneck, \
     GhostBottleneck, FastRepVGGBlockV4, RepVGGBlock, RepNeXtBlock, FastRepVGGBlockV3, QARepVGGBlock
-from models.conv import SRepConv, DWConv, GhostConv, DeformConv2d
+from models.conv import SRepConv, DWConv, GhostConv, DeformConv2d, ConvTranspose, DWConvTranspose2d
 from models.head import NNDetect
 from models.net import BottleneckLan, C2f, BottleneckLanSRep, RepLan, C2FastRep, C2sFastRep, C2x, C2e, C2t, C2g, \
     C2RepNeXt, MS2f
@@ -32,10 +31,9 @@ if platform.system() != 'Windows':
 
 from models.common import *
 from models.experimental import *
-from utils.general import LOGGER, check_yaml, make_divisible, print_args
+from utils.general import LOGGER, make_divisible
 from utils.plots import feature_visualization
-from utils.torch_utils import (fuse_conv_and_bn, initialize_weights, model_info, profile, scale_img, select_device,
-                               time_sync)
+from utils.torch_utils import (fuse_conv_and_bn, initialize_weights, model_info, scale_img, time_sync)
 
 try:
     import thop  # for FLOPs computation
