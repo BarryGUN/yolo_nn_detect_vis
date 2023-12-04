@@ -12,15 +12,13 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
-from models.blocks import RepBlock, FastRepBlock, QARepBlock, FastRepV2Block, FastRepV3Block, FastRepDBlock, Bottleneck, \
-    GhostBottleneck, FastRepVGGBlockV4, RepVGGBlock, RepNeXtBlock, FastRepVGGBlockV3, QARepVGGBlock
-from models.conv import SRepConv, DWConv, GhostConv, DeformConv2d, ConvTranspose, DWConvTranspose2d
+from models.blocks import RepBlock, QARepBlock, Bottleneck, \
+    GhostBottleneck, RepVGGBlock, RepNeXtBlock, QARepVGGBlock
+from models.conv import DWConv, GhostConv, DeformConv2d, ConvTranspose, DWConvTranspose2d
 from models.head import NNDetect
-from models.net import BottleneckLan, C2f, BottleneckLanSRep, RepLan, C2FastRep, C2sFastRep, C2x, C2e, C2t, C2g, \
-    C2RepNeXt, MS2f
+from models.net import C2f
 from models.net_spp import SPPF, \
-    SPPCSPC, SPP, SimSPPCSPC, SimSPPHCSPC, C2fSimSPP, RepSPPCSPC, RepSPPCSPCL, RepSPPCSP, RepSPPCSPC2, RepSPPCSPSB, \
-    RepSPPCSPSC, SPPFCSP
+    SPPCSPC, SPP
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
@@ -80,7 +78,7 @@ class BaseModel(nn.Module):
                 m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
                 delattr(m, 'bn')  # remove batchnorm
                 m.forward = m.forward_fuse  # update forward
-            if isinstance(m, (RepVGGBlock, QARepVGGBlock, FastRepVGGBlockV3, RepNeXtBlock, FastRepVGGBlockV4)):
+            if isinstance(m, (RepVGGBlock, QARepVGGBlock, RepNeXtBlock)):
                 m.switch_to_deploy()
                 rep_layer_num += 1
         LOGGER.info(f"{colorstr('Rep Model: ')}deploy mode, total:{rep_layer_num} layers")
@@ -106,7 +104,7 @@ class BaseModel(nn.Module):
 class DetectionModel(BaseModel):
     # YOLOv5 detection model
     # def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, anchors=None):  # model, input channels, number of classes
-    def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None):  # model, input channels, number of classes
+    def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, scale='n'):  # model, input channels, number of classes
         super().__init__()
         if isinstance(cfg, dict):
             self.yaml = cfg  # model dict
@@ -124,7 +122,7 @@ class DetectionModel(BaseModel):
         # if anchors:
         #     LOGGER.info(f'Overriding model.yaml anchors with anchors={anchors}')
         #     self.yaml['anchors'] = round(anchors)  # override yaml value
-        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
+        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch], scale=scale)  # model, savelist
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         self.inplace = self.yaml.get('inplace', True)
 
@@ -196,73 +194,57 @@ class DetectionModel(BaseModel):
 
 Model = DetectionModel  # retain YOLOv5 'Model' class for backwards compatibility
 
-def parse_model(d, ch):  # model_dict, input_channels(3)
+
+def parse_model(d, ch, scale):  # model_dict, input_channels(3)
     # Parse a YOLOv5 model.yaml dictionary
     LOGGER.info(
         f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'in':>3}{' ':>3}{'out':<10} {'arguments':<30}")
     # anchors, nc, gd, gw, act = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
-    nc, gd, gw, act = d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+    # nc, gd, gw, act = d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+    max_channels = float('inf')
+    gd, gw, = 1.0, 1.0
+    nc, act, scales = (d.get(x) for x in ('nc', 'activation', 'scales'))
+
+    if scales:
+        if scale in ['n', 's', 'm', 'x', 'l']:
+            gd, gw, max_channels = scales[scale]
+        else:
+            scale = tuple(scales.keys())[0]
+            LOGGER.warning(f"WARNING ⚠️ no model scale passed. Assuming scale='{scale}'.")
+        gd, gw, max_channels = scales[scale]
+
     if act:
         Conv.default_act = eval(act)  # redefine default activation, i.e. Conv.default_act = nn.SiLU()
         LOGGER.info(f"{colorstr('activation:')} {act}")  # print
-    # na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
-    # no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
-
 
     layers, save, c2, c1_pr = [], [], ch[-1], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
         m = eval(m) if isinstance(m, str) else m  # eval strings
         for j, a in enumerate(args):
-            # with contextlib.suppress(NameError):
-            #     args[j] = eval(a) if isinstance(a, str) else a  # eval strings
             if isinstance(a, str):
                 with contextlib.suppress(ValueError):
                     args[j] = locals()[a] if a in locals() else ast.literal_eval(a)
 
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
-        if m in {
-            nn.Conv2d, Conv, SRepConv, ConvTranspose, GhostConv, MixConv2d, DWConv, DeformConv2d,
-            nn.ConvTranspose2d, DWConvTranspose2d, Focus,
-            FastRepBlock, QARepBlock, FastRepV2Block, FastRepV3Block, FastRepDBlock,
-            Bottleneck, GhostBottleneck, RepBlock, RepLan, C2FastRep, C2sFastRep, C2x, C2e, C2t, C2g,
-            C2RepNeXt, MS2f,
-            SPP, SPPF, SPPCSPC, RepSPPCSPC, SimSPPCSPC, SimSPPHCSPC, C2fSimSPP, RepSPPCSPCL, RepSPPCSP,
-            RepSPPCSPC2, RepSPPCSPSB, RepSPPCSPSC, SPPFCSP,
-            C2f, BottleneckLan, BottleneckLanSRep
-            }:
+        if m in (nn.Conv2d, Conv, ConvTranspose, GhostConv, MixConv2d, DWConv, DeformConv2d,
+                 nn.ConvTranspose2d, DWConvTranspose2d, Focus, QARepBlock, Bottleneck, GhostBottleneck,
+                 RepBlock, SPP, SPPF, SPPCSPC, C2f):
             c1, c2 = ch[f], args[0]
             c1_pr = c1
-            # if c2 != no:  # if not output
-            #     c2 = make_divisible(c2 * gw, 8)
             if c2 != nc:  # if not output
-                c2 = make_divisible(c2 * gw, 8)
-            if m in [RepBlock, QARepBlock, FastRepBlock, FastRepV2Block, RepLan,
-                     FastRepV3Block, C2FastRep, C2x]:
-                args = [c1, args[0], args[1]]
-                c2 = args[1]
-            elif m in [BottleneckLan, BottleneckLanSRep, C2f, FastRepDBlock, C2sFastRep, C2e, C2t, C2g,
-                       C2RepNeXt, MS2f]:
-                args = [c1, args[0], args[1], args[2]]
-                c2 = args[1]
-            else:
-                args = [c1, c2, *args[1:]]
-
-            if m in {SPPCSPC, RepSPPCSPC, SPPF, SimSPPCSPC, SimSPPHCSPC, SPP,
-                     C2fSimSPP, RepSPPCSPCL, RepSPPCSP, RepSPPCSPC2, RepSPPCSPSB,
-                     RepSPPCSPSC, SPPFCSP
-                     }:
-                args.insert(2, n)  # number of repeats
+                c2 = make_divisible(min(c2, max_channels) * gw, 8)
+            args = [c1, c2, *args[1:]]
+            if m in (C2f,):
+                args.insert(2, n)
                 n = 1
-        elif m in {nn.BatchNorm2d}:
+        elif m in (nn.BatchNorm2d,):
             args = [ch[f]]
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
 
         # TODO: channel, gw, gd
-        elif m in {NNDetect}:
+        elif m in (NNDetect,):
             args.append([ch[x] for x in f])
-            # if isinstance(args[1], int):  # number of anchors
-            #     args[1] = [list(range(args[1] * 2))] * len(f)
         elif m is Contract:
             c2 = ch[f] * args[0] ** 2
         elif m is Expand:
@@ -280,4 +262,3 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             ch = []
         ch.append(c2)
     return nn.Sequential(*layers), sorted(save)
-

@@ -34,8 +34,6 @@ from pathlib import Path
 
 import torch
 
-from models.blocks import FastRepV3Block, FastRepVGGBlockV2, FastRepDBlock
-
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
 if str(ROOT) not in sys.path:
@@ -74,7 +72,7 @@ def run(
         name='exp',  # save results to project/name
         exist_ok=False,  # existing project/name ok, do not increment
         line_thickness=3,  # bounding box thickness (pixels)
-        hide_labels=False,  # hide labels
+        hide_labels=False,  # hide labels7
         hide_conf=False,  # hide confidences
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference

@@ -244,7 +244,7 @@ def init_seeds(seed=0, deterministic=False):
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)  # for Multi-GPU, exception safe
     # torch.backends.cudnn.benchmark = True  # AutoBatch problem https://github.com/ultralytics/yolov5/issues/9287
-    if deterministic and check_version(torch.__version__, '1.12.0'):  # https://github.com/ultralytics/yolov5/pull/8213
+    if deterministic and check_version(torch.__version__, '2.0.0'):  # https://github.com/ultralytics/yolov5/pull/8213
         deterministic = True
         from torch.backends import cudnn
         torch.use_deterministic_algorithms(deterministic, warn_only=True)
@@ -252,9 +252,14 @@ def init_seeds(seed=0, deterministic=False):
         cudnn.deterministic = deterministic
         os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
         os.environ['PYTHONHASHSEED'] = str(seed)
+    elif not check_version(torch.__version__, '2.0.0'):
+        deterministic = False
+        LOGGER.info(f"{colorstr('deterministic: ')}{deterministic}, please update to torch 2.0.0 for deterministic "
+                    f"running")
     else:
         deterministic = False
-    LOGGER.info(f"{colorstr('deterministic: ')}{deterministic}")
+        LOGGER.info(f"{colorstr('deterministic: ')}{deterministic}")
+
 
 
 def intersect_dicts(da, db, exclude=()):

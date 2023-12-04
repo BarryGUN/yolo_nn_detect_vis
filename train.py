@@ -52,9 +52,9 @@ GIT_INFO = None  # check_git_info()
 
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
-    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, use_amp, info_only, low_gpu_mem = \
+    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, use_amp, info_only, low_gpu_mem, scale = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
-        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.amp, opt.info_only, opt.low_gpu_mem
+        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.amp, opt.info_only, opt.low_gpu_mem, opt.scale
     callbacks.run('on_pretrain_routine_start')
 
     # Directories
@@ -114,7 +114,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         model.load_state_dict(csd, strict=False)  # load
         LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')  # report
     else:
-        model = Model(cfg, ch=3, nc=nc).to(device)
+        model = Model(cfg, ch=3, nc=nc, scale=scale).to(device)
+        LOGGER.info(f"{colorstr('Scale: ')}{scale} ")  # report
     if info_only:
         return None
 
@@ -429,6 +430,7 @@ def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str, default='', help='initial weights path')
     parser.add_argument('--cfg', type=str, default='yolov8m-base.yaml', help='model.yaml path')
+    parser.add_argument('--scale', type=str, default='n', help='model size')
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch.yaml', help='hyper parameters path')
     parser.add_argument('--epochs', type=int, default=100, help='total training epochs')
