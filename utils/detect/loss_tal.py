@@ -17,22 +17,31 @@ from utils.detect.assigner.tal.assigner import TaskAlignedAssigner
 from utils.torch_utils import de_parallel
 
 
-
 class BboxLoss(nn.Module):
-    def __init__(self, reg_max, use_dfl=False):
+    def __init__(self, reg_max, use_dfl=False, use_fel=False):
         super().__init__()
         self.reg_max = reg_max
         self.use_dfl = use_dfl
+        self.use_fel = use_fel
 
-    def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
+    def forward(self, pred_dist,
+                pred_bboxes,
+                anchor_points,
+                target_bboxes,
+                target_scores,
+                target_scores_sum,
+                fg_mask):
         # iou loss
         # new
         bbox_weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
-        iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
-        loss_iou = 1.0 - iou
 
-        loss_iou *= bbox_weight
-        loss_iou = loss_iou.sum() / target_scores_sum
+        if self.use_fel:
+            eiou, iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, FocalEIoU=True)
+            loss_iou = ((1.0 - eiou) * bbox_weight).sum() / target_scores_sum
+            loss_iou *= iou
+        else:
+            iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
+            loss_iou = ((1.0 - iou) * bbox_weight).sum() / target_scores_sum
 
         # dfl loss
         if self.use_dfl:
@@ -58,32 +67,30 @@ class BboxLoss(nn.Module):
 
 class NNDetectionLoss:
     # Compute losses
-    def __init__(self, model, use_dfl=True):
+    def __init__(self, model, use_dfl=True, use_qfl=False, use_fel=False):
         device = next(model.parameters()).device  # get model device
         # h = model.hyp  # hyperparameters
-
-        # Define criteria
-        # BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h["cls_pw"]], device=device), reduction='none')
-        # BCEcls = nn.BCEWithLogitsLoss(reduction='none')
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         # self.cp, self.cn = smooth_BCE(eps=h.get("label_smoothing", 0.0))  # positive, negative BCE targets
 
-        # # Focal loss
-        # g = h["fl_gamma"]  # focal loss gamma
-        # if g > 0:
-        #     BCEcls = FocalLoss(BCEcls, g)
-
         m = de_parallel(model).model[-1]  # Detect() module
-        self.balance = {3: [4.0, 1.0, 0.4]}.get(m.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
-        self.BCEcls = nn.BCEWithLogitsLoss(reduction='none')
+        # self.balance = {3: [4.0, 1.0, 0.4]}.get(m.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
+
+        # Define criteria
         self.hyp = model.hyp
+        if use_qfl:
+            self.cls_loss = QFocalLoss(loss_fcn=nn.BCEWithLogitsLoss(reduction='none'),
+                                       gamma=self.hyp['qfl_gamma'],
+                                       alpha=self.hyp['qfl_alpha'])
+        else:
+            self.cls_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
         self.device = device
 
-        # 采用的Task-Aligned Assigner样本匹配策略
+        # Task-Aligned Assigner
         self.assigner = TaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
                                             num_classes=self.nc,
                                             alpha=float(os.getenv('YOLOA', 0.5)),
@@ -98,7 +105,7 @@ class NNDetectionLoss:
         else:
             i = targets[:, 0]  # image index
             _, counts = i.unique(return_counts=True)
-            counts = counts.to(dtype=torch.int32) # v8
+            counts = counts.to(dtype=torch.int32)  # v8
             out = torch.zeros(batch_size, counts.max(), 5, device=self.device)
             for j in range(batch_size):
                 matches = i == j
@@ -113,7 +120,6 @@ class NNDetectionLoss:
             b, a, c = pred_dist.shape  # batch, anchors, channels
             pred_dist = pred_dist.view(b, a, 4, c // 4).softmax(3).matmul(self.proj.type(pred_dist.dtype))
         return dist2bbox(pred_dist, anchor_points, xywh=False)
-
 
     # 舍弃了anchor
     def __call__(self, p, targets, img=None, epoch=0):
@@ -144,12 +150,11 @@ class NNDetectionLoss:
             gt_bboxes,
             mask_gt)
 
-
         target_scores_sum = max(target_scores.sum(), 1)
 
         # cls loss
         # loss[1] = self.varifocal_loss(pred_scores, target_scores, target_labels) / target_scores_sum  # VFL way
-        loss[1] = self.BCEcls(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
+        loss[1] = self.cls_loss(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
 
         # bbox loss
         if fg_mask.sum():
@@ -167,12 +172,3 @@ class NNDetectionLoss:
         loss[2] *= self.hyp['dfl']  # dfl gain
 
         return loss.sum() * batch_size, loss.detach()  # loss(box, cls, dfl)
-
-
-
-class NNDetectionLossV2(NNDetectionLoss):
-    def __init__(self, model, use_dfl=True):
-        super().__init__(model, use_dfl)
-        h = model.hyp
-        device = next(model.parameters()).device  # get model device
-        self.BCEcls = QFocalLoss(loss_fcn=nn.BCEWithLogitsLoss(reduction='none'))

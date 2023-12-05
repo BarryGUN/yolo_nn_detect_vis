@@ -39,7 +39,7 @@ from utils.general import (LOGGER, TQDM_BAR_FORMAT, check_amp, check_dataset, ch
                            yaml_save)
 from utils.loggers import Loggers
 from utils.loggers.comet.comet_utils import check_comet_resume
-from utils.detect.loss_tal import NNDetectionLoss, NNDetectionLossV2
+from utils.detect.loss_tal import NNDetectionLoss
 from utils.metrics import fitness
 from utils.plots import plot_evolve
 from utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, select_device, smart_DDP, smart_optimizer,
@@ -240,8 +240,13 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     scheduler.last_epoch = start_epoch - 1  # do not move
     scaler = torch.cuda.amp.GradScaler(enabled=amp)
     stopper, stop = EarlyStopping(patience=opt.patience), False
-    compute_loss = NNDetectionLoss(model)  # init loss class
-    # compute_loss = NNDetectionLossV2(model)  # new loss
+
+    # init loss class
+    compute_loss = NNDetectionLoss(model)
+    # compute_loss = NNDetectionLoss(model, use_qfl=True)  # use qfl for cls_loss
+    # compute_loss = NNDetectionLoss(model, use_fel=True)  # use fel for bbox_loss
+    # compute_loss = NNDetectionLoss(model, use_fel=True, use_qfl=True)  # use fel and qfl
+
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
                 f'Using {train_loader.num_workers * WORLD_SIZE} dataloader workers\n'
