@@ -68,8 +68,8 @@ if platform.system() != 'Windows':
     ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 from models.experimental import attempt_load
-from models.task import ClassificationModel, DetectionModel, SegmentationModel
-from models.head import NNDetect, Detect
+from models.task import DetectionModel
+from models.head import NNDetect
 from utils.dataloaders import LoadImages
 from utils.general import (LOGGER, Profile, check_dataset, check_img_size, check_requirements, check_version,
                            check_yaml, colorstr, file_size, get_default_args, print_args, url2file, yaml_save)
@@ -139,14 +139,12 @@ def export_onnx(model, im, file, opset, dynamic, simplify, prefix=colorstr('ONNX
     LOGGER.info(f'\n{prefix} starting export with onnx {onnx.__version__}...')
     f = file.with_suffix('.onnx')
 
-    output_names = ['output0', 'output1'] if isinstance(model, SegmentationModel) else ['output0']
+    output_names =  ['output0']
     if dynamic:
         dynamic = {'images': {0: 'batch', 2: 'height', 3: 'width'}}  # shape(1,3,640,640)
-        if isinstance(model, SegmentationModel):
+        if isinstance(model, DetectionModel):
             dynamic['output0'] = {0: 'batch', 1: 'anchors'}  # shape(1,25200,85)
-            dynamic['output1'] = {0: 'batch', 2: 'mask_height', 3: 'mask_width'}  # shape(1,32,160,160)
-        elif isinstance(model, DetectionModel):
-            dynamic['output0'] = {0: 'batch', 1: 'anchors'}  # shape(1,25200,85)
+
 
     torch.onnx.export(
         model.cpu() if dynamic else model,  # --dynamic only compatible with cpu
@@ -541,7 +539,7 @@ def run(
     # Update model
     model.eval()
     for k, m in model.named_modules():
-        if isinstance(m, (Detect, NNDetect)):
+        if isinstance(m, NNDetect):
             m.inplace = inplace
             m.dynamic = dynamic
             m.export = True
@@ -569,7 +567,6 @@ def run(
         f[4], _ = export_coreml(model, im, file, int8, half)
     if any((saved_model, pb, tflite, edgetpu, tfjs)):  # TensorFlow formats
         assert not tflite or not tfjs, 'TFLite and TF.js models must be exported separately, please pass only one type.'
-        assert not isinstance(model, ClassificationModel), 'ClassificationModel export to TF formats not yet supported.'
         f[5], s_model = export_saved_model(model.cpu(),
                                            im,
                                            file,
@@ -596,7 +593,7 @@ def run(
     # Finish
     f = [str(x) for x in f if x]  # filter out '' and None
     if any(f):
-        cls, det, seg = (isinstance(model, x) for x in (ClassificationModel, DetectionModel, SegmentationModel))  # type
+        cls, det, seg = (isinstance(model, x) for x in (DetectionModel, ))  # type
         dir = Path('segment' if seg else 'classify' if cls else '')
         h = '--half' if half else ''  # --half FP16 inference arg
         s = "# WARNING ⚠️ ClassificationModel not yet supported for PyTorch Hub AutoShape inference" if cls else \
