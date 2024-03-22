@@ -464,6 +464,7 @@ class AutoShape(nn.Module):
     max_det = 1000  # maximum number of detections per image
     amp = False  # Automatic Mixed Precision (AMP) inference
 
+
     def __init__(self, model, verbose=True):
         super().__init__()
         if verbose:
