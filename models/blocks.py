@@ -8,6 +8,18 @@ from torch.nn import functional
 from models.conv import Conv, GhostConv, DWConv, autopad
 
 
+
+class CBFuse(nn.Module):
+    def __init__(self, idx):
+        super(CBFuse, self).__init__()
+        self.idx = idx
+
+    def forward(self, xs):
+        target_size = xs[-1].shape[2:]
+        res = [functional.interpolate(x[self.idx[i]], size=target_size, mode='nearest') for i, x in enumerate(xs[:-1])]
+        out = torch.sum(torch.stack(res + xs[-1:]), dim=0)
+        return out
+
 class RepVGGBlock(nn.Module):
     '''RepVGGBlock is a basic rep-style block, including training and deploy status
     This code is based on https://github.com/DingXiaoH/RepVGG/blob/main/repvgg.py

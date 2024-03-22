@@ -13,7 +13,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from models.blocks import RepBlock, QARepBlock, Bottleneck, \
-    GhostBottleneck, RepVGGBlock, RepNeXtBlock, QARepVGGBlock
+    GhostBottleneck, RepVGGBlock, RepNeXtBlock, QARepVGGBlock, CBFuse
 from models.conv import DWConv, GhostConv, DeformConv2d, ConvTranspose, DWConvTranspose2d
 from models.head import NNDetect
 from models.net import C2f
@@ -241,6 +241,8 @@ def parse_model(d, ch, scale):  # model_dict, input_channels(3)
             args = [ch[f]]
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
+        elif m is CBFuse:
+            c2 = ch[f[-1]]
 
         # TODO: channel, gw, gd
         elif m in (NNDetect,):
