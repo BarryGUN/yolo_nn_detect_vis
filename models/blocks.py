@@ -20,9 +20,32 @@ class CBFuse(nn.Module):
         out = torch.sum(torch.stack(res + xs[-1:]), dim=0)
         return out
 
+class ReConvFuse(nn.Module):
+    def __init__(self,idx):
+        super(ReConvFuse, self).__init__()
+        self.idx = idx
+
+    def forward(self, xs):
+        # target_size = xs[-1].shape[2:]
+        res = [x[self.idx[i]] for i, x in enumerate(xs[:-1])]
+        # res = [x for x in xs[:-1]]
+        out = torch.sum(torch.stack(res + xs[-1:]), dim=0)
+        return out
+
 class CBLinear(nn.Module):
     def __init__(self, c1, c2s, k=1, s=1, p=None, g=1):  # ch_in, ch_outs, kernel, stride, padding, groups
         super(CBLinear, self).__init__()
+        self.c2s = c2s
+        self.conv = nn.Conv2d(c1, sum(c2s), k, s, autopad(k, p), groups=g, bias=True)
+
+    def forward(self, x):
+        outs = self.conv(x).split(self.c2s, dim=1)
+        return outs
+
+
+class ReConvLinear(nn.Module):
+    def __init__(self, c1, c2s, k=1, s=1, p=None, g=1):  # ch_in, ch_outs, kernel, stride, padding, groups
+        super(ReConvLinear, self).__init__()
         self.c2s = c2s
         self.conv = nn.Conv2d(c1, sum(c2s), k, s, autopad(k, p), groups=g, bias=True)
 

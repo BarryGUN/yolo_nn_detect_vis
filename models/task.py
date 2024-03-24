@@ -13,7 +13,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from models.blocks import RepBlock, QARepBlock, Bottleneck, \
-    GhostBottleneck, RepVGGBlock, RepNeXtBlock, QARepVGGBlock, CBFuse, CBLinear
+    GhostBottleneck, RepVGGBlock, RepNeXtBlock, QARepVGGBlock, CBFuse, CBLinear, ReConvFuse
 from models.conv import DWConv, GhostConv, DeformConv2d, ConvTranspose, DWConvTranspose2d
 from models.head import NNDetect
 from models.net import C2f
@@ -241,7 +241,7 @@ def parse_model(d, ch, scale):  # model_dict, input_channels(3)
             args = [ch[f]]
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
-        elif m is CBFuse:
+        elif m in (CBFuse, ReConvFuse):
             c2 = ch[f[-1]]
             # c2 = make_divisible(min(c2, max_channels) * gw, 8)
         elif m is CBLinear:
