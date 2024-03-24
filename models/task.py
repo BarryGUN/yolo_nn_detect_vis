@@ -13,7 +13,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from models.blocks import RepBlock, QARepBlock, Bottleneck, \
-    GhostBottleneck, RepVGGBlock, RepNeXtBlock, QARepVGGBlock, CBFuse, CBLinear, ReConvFuse
+    RepVGGBlock, QARepVGGBlock, CBFuse, CBLinear, ReConvFuse
 from models.conv import DWConv, GhostConv, DeformConv2d, ConvTranspose, DWConvTranspose2d
 from models.head import NNDetect
 from models.net import C2f
@@ -40,7 +40,7 @@ except ImportError:
 
 
 class BaseModel(nn.Module):
-    # YOLOv5 base model
+    # YOLOnn base model
     def forward(self, x, profile=False, visualize=False):
         return self._forward_once(x, profile, visualize)  # single-scale inference, train
 
@@ -78,7 +78,7 @@ class BaseModel(nn.Module):
                 m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
                 delattr(m, 'bn')  # remove batchnorm
                 m.forward = m.forward_fuse  # update forward
-            if isinstance(m, (RepVGGBlock, QARepVGGBlock, RepNeXtBlock)):
+            if isinstance(m, (RepVGGBlock, QARepVGGBlock)):
                 m.switch_to_deploy()
                 rep_layer_num += 1
         LOGGER.info(f"{colorstr('Rep Model: ')}deploy mode, total:{rep_layer_num} layers")
@@ -227,7 +227,7 @@ def parse_model(d, ch, scale):  # model_dict, input_channels(3)
 
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in (nn.Conv2d, Conv, ConvTranspose, GhostConv, MixConv2d, DWConv, DeformConv2d,
-                 nn.ConvTranspose2d, DWConvTranspose2d, Focus, QARepBlock, Bottleneck, GhostBottleneck,
+                 nn.ConvTranspose2d, DWConvTranspose2d, Focus, QARepBlock, Bottleneck,
                  RepBlock, SPP, SPPF, SPPCSPC, C2f):
             c1, c2 = ch[f], args[0]
             c1_pr = c1
@@ -243,6 +243,8 @@ def parse_model(d, ch, scale):  # model_dict, input_channels(3)
             c2 = sum(ch[x] for x in f)
         elif m in (CBFuse, ReConvFuse):
             c2 = ch[f[-1]]
+            if m is ReConvFuse:
+                args.insert(1, c2)
             # c2 = make_divisible(min(c2, max_channels) * gw, 8)
         elif m is CBLinear:
             cho = []
