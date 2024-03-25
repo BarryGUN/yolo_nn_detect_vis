@@ -26,7 +26,11 @@ class ReConvFuse(nn.Module):
 
     def forward(self, xs):
         res = [self.scale[i](x[self.idx[i]]) * x[self.idx[i]] for i, x in enumerate(xs[:-1])]
-        out = torch.sum(torch.stack(res + xs[-1:]), dim=0)
+        # out = torch.sum(torch.stack(res + xs[-1:]), dim=0)
+
+        res.append(xs[-1])
+        out = torch.sum(torch.stack(res), dim=0)
+
         return out
 
 
