@@ -6,7 +6,6 @@ from torch.nn import functional
 from models.conv import Conv, DWConv, autopad
 
 
-
 class CBFuse(nn.Module):
     def __init__(self, idx):
         super(CBFuse, self).__init__()
@@ -18,6 +17,7 @@ class CBFuse(nn.Module):
         out = torch.sum(torch.stack(res + xs[-1:]), dim=0)
         return out
 
+
 class ReConvFuse(nn.Module):
     def __init__(self, idx, dim, k=3, s=1):
         super(ReConvFuse, self).__init__()
@@ -25,12 +25,10 @@ class ReConvFuse(nn.Module):
         self.scale = nn.ModuleList(DWConv(c1=dim, c2=dim, k=k, s=s) for _ in range(len(idx)))
 
     def forward(self, xs):
-        # target_size = xs[-1].shape[2:]
         res = [self.scale[i](x[self.idx[i]]) * x[self.idx[i]] for i, x in enumerate(xs[:-1])]
-
-        # res = [x for x in xs[:-1]]
         out = torch.sum(torch.stack(res + xs[-1:]), dim=0)
         return out
+
 
 class CBLinear(nn.Module):
     def __init__(self, c1, c2s, k=1, s=1, p=None, g=1):  # ch_in, ch_outs, kernel, stride, padding, groups
@@ -52,6 +50,7 @@ class ReConvLinear(nn.Module):
     def forward(self, x):
         outs = self.conv(x).split(self.c2s, dim=1)
         return outs
+
 
 class RepVGGBlock(nn.Module):
     '''RepVGGBlock is a basic rep-style block, including training and deploy status
@@ -348,3 +347,20 @@ class Bottleneck(nn.Module):
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 
 
+class BottleneckCSP(nn.Module):
+    # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False)
+        self.cv3 = nn.Conv2d(c_, c_, 1, 1, bias=False)
+        self.cv4 = Conv(2 * c_, c2, 1, 1)
+        self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
+        self.act = nn.SiLU()
+        self.m = Bottleneck(c_, c_, shortcut, g, e=1.0)
+
+    def forward(self, x):
+        y1 = self.cv3(self.m(self.cv1(x)))
+        y2 = self.cv2(x)
+        return self.cv4(self.act(self.bn(torch.cat((y1, y2), 1))))

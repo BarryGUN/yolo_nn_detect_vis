@@ -16,7 +16,7 @@ from models.blocks import RepBlock, QARepBlock, Bottleneck, \
     RepVGGBlock, QARepVGGBlock, CBFuse, CBLinear, ReConvFuse
 from models.conv import DWConv, GhostConv, DeformConv2d, ConvTranspose, DWConvTranspose2d
 from models.head import NNDetect
-from models.net import C2f
+from models.net import C2f, C2ELAN
 from models.net_spp import SPPF, \
     SPPCSPC, SPP
 
@@ -228,13 +228,13 @@ def parse_model(d, ch, scale):  # model_dict, input_channels(3)
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in (nn.Conv2d, Conv, ConvTranspose, GhostConv, MixConv2d, DWConv, DeformConv2d,
                  nn.ConvTranspose2d, DWConvTranspose2d, Focus, QARepBlock, Bottleneck,
-                 RepBlock, SPP, SPPF, SPPCSPC, C2f):
+                 RepBlock, SPP, SPPF, SPPCSPC, C2f, C2ELAN):
             c1, c2 = ch[f], args[0]
             c1_pr = c1
             if c2 != nc:  # if not output
                 c2 = make_divisible(min(c2, max_channels) * gw, 8)
             args = [c1, c2, *args[1:]]
-            if m in (C2f,):
+            if m in (C2f, C2ELAN):
                 args.insert(2, n)
                 n = 1
         elif m in (nn.BatchNorm2d,):
