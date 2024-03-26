@@ -52,9 +52,40 @@ GIT_INFO = None  # check_git_info()
 
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
-    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, use_amp, info_only, low_gpu_mem, model_scale = \
-        Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
-        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.amp, opt.info_only, opt.low_gpu_mem, opt.model_scale
+    save_dir, \
+    epochs, \
+    batch_size, \
+    weights, \
+    single_cls, \
+    evolve, \
+    data, \
+    cfg, \
+    resume, \
+    noval, \
+    nosave, \
+    workers, \
+    freeze, \
+    use_amp, \
+    info_only, \
+    low_gpu_mem, \
+    model_scale = \
+        Path(opt.save_dir), \
+        opt.epochs, \
+        opt.batch_size, \
+        opt.weights, \
+        opt.single_cls, \
+        opt.evolve, \
+        opt.data, \
+        opt.cfg, \
+        opt.resume, \
+        opt.noval, \
+        opt.nosave, \
+        opt.workers, \
+        opt.freeze, \
+        opt.amp, \
+        opt.info_only, \
+        opt.low_gpu_mem, \
+        opt.model_scale
     callbacks.run('on_pretrain_routine_start')
 
     # Directories

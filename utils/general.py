@@ -250,7 +250,7 @@ def init_seeds(seed=0, deterministic=False):
         torch.use_deterministic_algorithms(deterministic, warn_only=True)
         # torch.use_deterministic_algorithms(deterministic)
         # cudnn.deterministic = deterministic
-        torch.backends.cudnn = deterministic
+        torch.backends.cudnn.deterministic = deterministic
         os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
         os.environ['PYTHONHASHSEED'] = str(seed)
     elif not check_version(torch.__version__, '2.0.0'):
