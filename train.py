@@ -334,10 +334,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 if callbacks.stop_training:
                     return
 
-        # clean the redundancy memory
-        if low_gpu_mem:
-            torch.cuda.empty_cache()
-
         # end batch ------------------------------------------------------------------------------------------------
 
         # Scheduler
@@ -400,6 +396,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 stop = broadcast_list[0]
         if stop:
             break  # must break all DDP ranks
+
+        # clean the redundancy memory
+        if low_gpu_mem:
+            torch.cuda.empty_cache()
 
         # end epoch ----------------------------------------------------------------------------------------------------
     # end training -----------------------------------------------------------------------------------------------------

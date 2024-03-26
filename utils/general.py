@@ -246,10 +246,11 @@ def init_seeds(seed=0, deterministic=False):
     # torch.backends.cudnn.benchmark = True  # AutoBatch problem https://github.com/ultralytics/yolov5/issues/9287
     if deterministic and check_version(torch.__version__, '2.0.0'):  # https://github.com/ultralytics/yolov5/pull/8213
         deterministic = True
-        from torch.backends import cudnn
+        # from torch.backends import cudnn
         torch.use_deterministic_algorithms(deterministic, warn_only=True)
         # torch.use_deterministic_algorithms(deterministic)
-        cudnn.deterministic = deterministic
+        # cudnn.deterministic = deterministic
+        torch.backends.cudnn = deterministic
         os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
         os.environ['PYTHONHASHSEED'] = str(seed)
     elif not check_version(torch.__version__, '2.0.0'):
