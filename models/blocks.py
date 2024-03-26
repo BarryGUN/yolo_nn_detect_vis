@@ -33,6 +33,23 @@ class ReConvFuse(nn.Module):
 
         return out
 
+class LightReConvFuse(nn.Module):
+    def __init__(self, idx, dim, k=3, s=1):
+        super(LightReConvFuse, self).__init__()
+        self.idx = idx
+        self.scale = DWConv(c1=dim, c2=dim, k=k, s=s)
+
+    def forward(self, xs):
+        # res = self.scale(xs[self.idx]) * xs[self.idx]
+        # # out = torch.sum(torch.stack(res + xs[-1:]), dim=0)
+        #
+        # res.append(xs[-1])
+        # print(xs[-1].shape)
+        # out = torch.sum(
+        #     torch.cat((self.scale(xs[self.idx]) * xs[self.idx], xs[-1]), dim=0), dim=0)
+
+        return self.scale(xs[self.idx]) * xs[self.idx] + xs[-1]
+
 
 class CBLinear(nn.Module):
     def __init__(self, c1, c2s, k=1, s=1, p=None, g=1):  # ch_in, ch_outs, kernel, stride, padding, groups
@@ -42,6 +59,16 @@ class CBLinear(nn.Module):
 
     def forward(self, x):
         outs = self.conv(x).split(self.c2s, dim=1)
+        return outs
+
+
+class DLinear(nn.Module):
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1):  # ch_in, ch_outs, kernel, stride, padding, groups
+        super(DLinear, self).__init__()
+        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=True)
+
+    def forward(self, x):
+        outs = self.conv(x)
         return outs
 
 

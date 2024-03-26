@@ -253,13 +253,14 @@ def init_seeds(seed=0, deterministic=False):
         torch.backends.cudnn.deterministic = deterministic
         os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
         os.environ['PYTHONHASHSEED'] = str(seed)
+        LOGGER.info(f"{colorstr('deterministic: ')}{deterministic}")
     elif not check_version(torch.__version__, '2.0.0'):
         deterministic = False
         LOGGER.info(f"{colorstr('deterministic: ')}{deterministic}, please update to torch 2.0.0 for deterministic "
                     f"running")
     else:
         deterministic = False
-        LOGGER.info(f"{colorstr('deterministic: ')}{deterministic}")
+        LOGGER.info(f"{colorstr('deterministic: ')}{deterministic}, manually closing")
 
 
 
