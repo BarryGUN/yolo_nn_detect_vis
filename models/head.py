@@ -9,7 +9,7 @@ from utils.detect.assigner.tal.anchor_generator import make_anchors, dist2bbox
 
 
 class NNDetect(nn.Module):
-    # YOLOv5 Detect head for detection models
+    # YOLONN Detect head for detection models
     dynamic = False  # force grid reconstruction
     export = False  # export mode
     shape = None

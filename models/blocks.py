@@ -33,6 +33,7 @@ class ReConvFuse(nn.Module):
 
         return out
 
+
 class LightReConvFuse(nn.Module):
     def __init__(self, idx, dim, k=3, s=1):
         super(LightReConvFuse, self).__init__()
@@ -48,7 +49,7 @@ class LightReConvFuse(nn.Module):
         # out = torch.sum(
         #     torch.cat((self.scale(xs[self.idx]) * xs[self.idx], xs[-1]), dim=0), dim=0)
 
-        return self.scale(xs[self.idx]) * xs[self.idx] + xs[-1]
+        return self.scale(xs[self.idx]) * xs[self.idx] + -xs[-1]
 
 
 class CBLinear(nn.Module):
@@ -384,3 +385,19 @@ class BottleneckCSP(nn.Module):
         y1 = self.cv3(self.m(self.cv1(x)))
         y2 = self.cv2(x)
         return self.cv4(self.act(self.bn(torch.cat((y1, y2), 1))))
+
+
+class LightC2(nn.Module):
+    """CSP Bottleneck with 2 convolutions."""
+
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        self.c = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, 2 * self.c, 1, 1)
+        self.cv2 = Conv(2 * self.c, c2, 1)
+        self.m = Bottleneck(self.c, self.c, shortcut, g, k=((3, 3), (3, 3)), e=1.0)
+
+    def forward(self, x):
+        """Forward pass through the CSP bottleneck with 2 convolutions."""
+        a, b = self.cv1(x).chunk(2, 1)
+        return self.cv2(torch.cat((self.m(a), b), 1))

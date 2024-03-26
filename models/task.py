@@ -1,4 +1,4 @@
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
+# YOLONN 🚀 by Ultralytics, GPL-3.0 license
 """
 YOLO-specific modules
 
@@ -16,12 +16,12 @@ from models.blocks import RepBlock, QARepBlock, Bottleneck, \
     RepVGGBlock, QARepVGGBlock, CBFuse, CBLinear, ReConvFuse, DLinear, LightReConvFuse
 from models.conv import DWConv, GhostConv, DeformConv2d, ConvTranspose, DWConvTranspose2d
 from models.head import NNDetect
-from models.net import C2f, C2ELAN
+from models.net import C2f, C2ELAN, LightC2ELAN
 from models.net_spp import SPPF, \
     SPPCSPC, SPP
 
 FILE = Path(__file__).resolve()
-ROOT = FILE.parents[1]  # YOLOv5 root directory
+ROOT = FILE.parents[1]  # YOLONN root directory
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 if platform.system() != 'Windows':
@@ -102,9 +102,8 @@ class BaseModel(nn.Module):
 
 
 class DetectionModel(BaseModel):
-    # YOLOv5 detection model
-    # def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, anchors=None):  # model, input channels, number of classes
-    def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, scale='n'):  # model, input channels, number of classes
+    # YOLONN detection model
+    def __init__(self, cfg='yolonn-vis.yaml', ch=3, nc=None, scale='n'):  # model, input channels, number of classes
         super().__init__()
         if isinstance(cfg, dict):
             self.yaml = cfg  # model dict
@@ -181,7 +180,7 @@ class DetectionModel(BaseModel):
         return p
 
     def _clip_augmented(self, y):
-        # Clip YOLOv5 augmented inference tails
+        # Clip YOLONN augmented inference tails
         nl = self.model[-1].nl  # number of detection layers (P3-P5)
         g = sum(4 ** x for x in range(nl))  # grid points
         e = 1  # exclude layer count
@@ -192,11 +191,11 @@ class DetectionModel(BaseModel):
         return y
 
 
-Model = DetectionModel  # retain YOLOv5 'Model' class for backwards compatibility
+Model = DetectionModel  # retain YOLONN 'Model' class for backwards compatibility
 
 
 def parse_model(d, ch, scale):  # model_dict, input_channels(3)
-    # Parse a YOLOv5 model.yaml dictionary
+    # Parse a YOLONN model.yaml dictionary
     LOGGER.info(
         f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'in':>3}{' ':>3}{'out':<10} {'arguments':<30}")
     # anchors, nc, gd, gw, act = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
@@ -228,13 +227,13 @@ def parse_model(d, ch, scale):  # model_dict, input_channels(3)
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in (nn.Conv2d, Conv, ConvTranspose, GhostConv, MixConv2d, DWConv, DeformConv2d,
                  nn.ConvTranspose2d, DWConvTranspose2d, Focus, QARepBlock, Bottleneck,
-                 RepBlock, SPP, SPPF, SPPCSPC, C2f, C2ELAN):
+                 RepBlock, SPP, SPPF, SPPCSPC, C2f, C2ELAN, LightC2ELAN):
             c1, c2 = ch[f], args[0]
             c1_pr = c1
             if c2 != nc:  # if not output
                 c2 = make_divisible(min(c2, max_channels) * gw, 8)
             args = [c1, c2, *args[1:]]
-            if m in (C2f, C2ELAN):
+            if m in (C2f, C2ELAN, LightC2ELAN):
                 args.insert(2, n)
                 n = 1
         elif m in (nn.BatchNorm2d,):
@@ -245,7 +244,6 @@ def parse_model(d, ch, scale):  # model_dict, input_channels(3)
             c2 = ch[f[-1]]
             if m in (ReConvFuse, LightReConvFuse) :
                 args.insert(1, c2)
-            # c2 = make_divisible(min(c2, max_channels) * gw, 8)
         elif m in (CBLinear, DLinear):
             c2 = args[0]
             if m is CBLinear:
