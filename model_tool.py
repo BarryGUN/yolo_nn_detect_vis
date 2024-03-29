@@ -15,6 +15,14 @@ def set_scale(opt):
     print('ok')
 
 
+def get_state_dict(opt):
+    weight_path, scale = opt.weight_path, opt.scale
+    weights = attempt_download(weight_path)
+    ckpt = torch.load(weights, map_location='cpu')
+    return ckpt['model']
+
+
+
 # weights = 'run/train/1/weights/bestks.pt'
 # # weights = 'run/train/1/weights/best.pt'
 # weights = attempt_download(weights)  # download if not found locally
@@ -31,4 +39,7 @@ if __name__ == '__main__':
     parser.add_argument('--scale', type=str, default='n',
                         help="model scale")
     args = parser.parse_args()
-    set_scale(args)
+
+
+    # set_scale(args)
+    print(get_state_dict(args).yaml)
