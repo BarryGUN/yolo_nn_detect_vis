@@ -122,7 +122,7 @@ class NNDetectionLoss:
         return dist2bbox(pred_dist, anchor_points, xywh=False)
 
     # 舍弃了anchor
-    def __call__(self, p, targets, img=None, epoch=0):
+    def __call__(self, p, targets, img=None):
         loss = torch.zeros(3, device=self.device)  # box, cls, dfl
         feats, pred_distri, pred_scores = p
         pred_scores = pred_scores.permute(0, 2, 1).contiguous()
@@ -232,22 +232,18 @@ class NNDetectionLossDistill:
             pred_dist = pred_dist.view(b, a, 4, c // 4).softmax(3).matmul(self.proj.type(pred_dist.dtype))
         return dist2bbox(pred_dist, anchor_points, xywh=False)
 
-    # 舍弃了anchor
-    def __call__(self, p, targets, teach, img=None, epoch=0):
-        loss = torch.zeros(4, device=self.device)  # box, cls, dfl
-        loss_t = torch.zeros(3, device=self.device)  # box, cls, dfl
+
+
+    def __get_detect_loss__(self, p, targets):
+        loss = torch.zeros(3, device=self.device)  # box, cls, dfl
         feats, pred_distri, pred_scores = p
-        feats_t, pred_distri_t, pred_scores_t = teach
         pred_scores = pred_scores.permute(0, 2, 1).contiguous()
         pred_distri = pred_distri.permute(0, 2, 1).contiguous()
-        pred_scores_t = pred_scores_t.permute(0, 2, 1).contiguous()
-        pred_distri_t = pred_distri_t.permute(0, 2, 1).contiguous()
 
         dtype = pred_scores.dtype
         batch_size, grid_size = pred_scores.shape[:2]
         imgsz = torch.tensor(feats[0].shape[2:], device=self.device, dtype=dtype) * self.stride[0]  # image size (h,w)
         anchor_points, stride_tensor = make_anchors(feats, self.stride, 0.5)
-        anchor_points_t, stride_tensor_t = make_anchors(feats_t, self.stride, 0.5)
 
         # targets
         targets = self.preprocess(targets, batch_size, scale_tensor=imgsz[[1, 0, 1, 0]])
@@ -256,9 +252,8 @@ class NNDetectionLossDistill:
 
         # pboxes
         pred_bboxes = self.bbox_decode(anchor_points, pred_distri)  # xyxy, (b, h*w, 4)
-        pred_bboxes_t = self.bbox_decode(anchor_points_t, pred_distri_t)  # xyxy, (b, h*w, 4)
 
-        # 正样本匹配TAA
+        # TAA
         target_labels, target_bboxes, target_scores, fg_mask = self.assigner(
             pred_scores.detach().sigmoid(),
             (pred_bboxes.detach() * stride_tensor).type(gt_bboxes.dtype),
@@ -267,21 +262,11 @@ class NNDetectionLossDistill:
             gt_bboxes,
             mask_gt)
 
-        target_labels_t, target_bboxes_t, target_scores_t, fg_mask_t = self.assigner(
-            pred_scores_t.detach().sigmoid(),
-            (pred_bboxes_t.detach() * stride_tensor_t).type(gt_bboxes.dtype),
-            anchor_points_t * stride_tensor_t,
-            gt_labels,
-            gt_bboxes,
-            mask_gt)
-
         target_scores_sum = max(target_scores.sum(), 1)
-        target_scores_sum_t = max(target_scores_t.sum(), 1)
 
         # cls loss
         # loss[1] = self.varifocal_loss(pred_scores, target_scores, target_labels) / target_scores_sum  # VFL way
         loss[1] = self.cls_loss(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
-        loss_t[1] = self.cls_loss(pred_scores_t, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
 
         # bbox loss
         if fg_mask.sum():
@@ -293,17 +278,28 @@ class NNDetectionLossDistill:
                                                    target_scores,
                                                    target_scores_sum,
                                                    fg_mask)
-            target_bboxes_t /= stride_tensor_t
-            loss_t[0], loss_t[2], iou_t = self.bbox_loss(pred_distri_t,
-                                                         pred_bboxes_t,
-                                                         anchor_points_t,
-                                                         target_bboxes_t,
-                                                         target_scores_t,
-                                                         target_scores_sum_t,
-                                                         fg_mask_t)
-            loss[3] = torch.zeros(1, device=self.device)  # box, cls, dfl
-            for idx in range(3):
-                loss[3] = loss[3] + self.distill(loss[idx], loss_t[idx])
+
+        return loss, batch_size
+
+    def __get_distill_loss__(self, st, tea):
+        loss = torch.zeros(1, device=self.device)  # box, cls, dfl
+        weight_list = (self.hyp['box'], self.hyp['cls'], self.hyp['dfl'])
+        for idx in range(3):
+            loss += weight_list[idx] * self.distill(st[idx], tea[idx])
+        return loss
+
+    def __call__(self, stu, targets, teach):
+        loss = torch.zeros(4, device=self.device)  # box, cls, dfl
+        loss_stu, batch_size = self.__get_detect_loss__(stu, targets)
+        with torch.no_grad():
+            loss_tea, _ = self.__get_detect_loss__(teach, targets)
+
+        loss_distill = self.__get_distill_loss__(loss_stu, loss_tea)
+
+        for idx in range(3):
+            loss[idx] = loss_stu[idx]
+
+        loss[3] = loss_distill
 
         loss[0] *= self.hyp['box']  # box gain
         loss[1] *= self.hyp['cls']  # cls gain

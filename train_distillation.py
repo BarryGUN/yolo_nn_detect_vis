@@ -28,7 +28,7 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
-import val as validate  # for end-of-epoch mAP
+import val_distillation as validate  # for end-of-epoch mAP
 from models.experimental import attempt_load
 from models.task import Model
 from utils.autobatch import check_train_batch_size
@@ -40,7 +40,7 @@ from utils.general import (LOGGER, TQDM_BAR_FORMAT, check_amp, check_dataset, ch
                            get_latest_run, increment_path, init_seeds, intersect_dicts, labels_to_class_weights,
                            labels_to_image_weights, methods, one_cycle, print_args, print_mutation, strip_optimizer,
                            yaml_save)
-from utils.loggers import Loggers
+from utils.loggers import LoggersDistill
 from utils.loggers.comet.comet_utils import check_comet_resume
 from utils.detect.loss_tal import NNDetectionLoss, NNDetectionLossDistill
 from utils.metrics import fitness
@@ -119,7 +119,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # Loggers
     data_dict = None
     if RANK in {-1, 0}:
-        loggers = Loggers(save_dir, weights, opt, hyp, LOGGER)  # loggers instance
+        loggers = LoggersDistill(save_dir, weights, opt, hyp, LOGGER)  # loggers instance
 
         # Register actions
         for k in methods(loggers):
@@ -197,14 +197,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         if any(x in k for x in freeze):
             LOGGER.info(f'student-freezing {k}')
             v.requires_grad = False
-    if not teach_use_weights:
-        teach_freeze = [f'teach_model.{x}.' for x in (teach_freeze if len(teach_freeze) > 1 else range(teach_freeze[0]))]  # layers to freeze
-        for k, v in teach_model.named_parameters():
-            # v.requires_grad = True  # train all layers TODO: uncomment this line as in master
-            # v.register_hook(lambda x: torch.nan_to_num(x))  # NaN to 0 (commented for erratic training results)
-            if any(x in k for x in teach_freeze):
-                LOGGER.info(f'teach-freezing {k}')
-                v.requires_grad = False
+    # if not teach_use_weights:
+    #     teach_freeze = [f'teach_model.{x}.' for x in (teach_freeze if len(teach_freeze) > 1 else range(teach_freeze[0]))]  # layers to freeze
+    #     for k, v in teach_model.named_parameters():
+    #         # v.requires_grad = True  # train all layers TODO: uncomment this line as in master
+    #         # v.register_hook(lambda x: torch.nan_to_num(x))  # NaN to 0 (commented for erratic training results)
+    #         if any(x in k for x in teach_freeze):
+    #             LOGGER.info(f'teach-freezing {k}')
+    #             v.requires_grad = False
 
     # Image size
     gs = max(int(model.stride.max()), 32)  # grid size (max stride)
@@ -303,6 +303,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     model.hyp = hyp  # attach hyperparameters to model
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
     model.names = names
+    teach_model.nc = nc  # attach number of classes to model
+    teach_model.hyp = hyp  # attach hyperparameters to model
+    teach_model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
+    teach_model.names = names
 
     # Start training
     t0 = time.time()
@@ -342,11 +346,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         # b = int(random.uniform(0.25 * imgsz, 0.75 * imgsz + gs) // gs * gs)
         # dataset.mosaic_border = [b - imgsz, -b]  # height, width borders
 
-        mloss = torch.zeros(3, device=device)  # mean losses
+        # mloss = torch.zeros(3, device=device)  # mean losses
+        mloss = torch.zeros(4, device=device)  # mean losses
         if RANK != -1:
             train_loader.sampler.set_epoch(epoch)
         pbar = enumerate(train_loader)
-        LOGGER.info(('\n' + '%11s' * 8) % ('Epoch', 'GPU_mem', 'box_loss', 'cls_loss', 'dfl_loss', 'distill_loss', 'Instances', 'Size'))
+        LOGGER.info(('\n' + '%11s' * 5 + '%15s' + '%11s' * 2) % ('Epoch', 'GPU_mem', 'box_loss', 'cls_loss', 'dfl_loss', 'distill_loss', 'Instances', 'Size'))
         # LOGGER.info(('\n' + '%11s' * 7) % ('Epoch', 'GPU_mem', 'box_loss', 'cls_loss', 'dfl_loss', 'Instances', 'Size'))
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, bar_format=TQDM_BAR_FORMAT)  # progress bar
@@ -380,7 +385,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
-                # if teach_use_weights:
                 with torch.no_grad():
                     pred_teach = teach_model(imgs)[1]
 
@@ -397,8 +401,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if ni - last_opt_step >= accumulate:
                 scaler.unscale_(optimizer)  # unscale gradients
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)  # clip gradients
-                if not teach_use_weights:
-                    torch.nn.utils.clip_grad_norm_(teach_model.parameters(), max_norm=10.0)  # clip gradients
                 scaler.step(optimizer)  # optimizer.step
                 scaler.update()
                 optimizer.zero_grad()
@@ -412,7 +414,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if RANK in {-1, 0}:
                 mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
                 mem = f'{torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0:.3g}G'  # (GB)
-                pbar.set_description(('%11s' * 2 + '%11.4g' * 6) %
+                pbar.set_description(('%11s' * 2 + '%11.4g' * 3 + '%15.4g' + '%11.4g' * 2) %
                                      (f'{epoch + 1}/{epochs}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
                 # pbar.set_description(('%11s' * 2 + '%11.4g' * 5) %
                 #                      (f'{epoch + 1}/{epochs}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
@@ -437,6 +439,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                 imgsz=imgsz,
                                                 half=amp,
                                                 model=ema.ema,
+                                                tea_model=teach_model,
                                                 single_cls=single_cls,
                                                 dataloader=val_loader,
                                                 save_dir=save_dir,
