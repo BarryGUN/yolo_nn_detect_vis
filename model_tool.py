@@ -25,9 +25,9 @@ def set_scale(opt):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weight-path', default='./data', type=str,
+    parser.add_argument('--weight-path', type=str,
                         help="weight path")
-    parser.add_argument('--scale', type=str, default='./train.json',
+    parser.add_argument('--scale', type=str, default='n',
                         help="model scale")
     args = parser.parse_args()
     set_scale(args)
