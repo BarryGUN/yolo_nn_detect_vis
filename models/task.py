@@ -118,10 +118,9 @@ class DetectionModel(BaseModel):
         if nc and nc != self.yaml['nc']:
             LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
             self.yaml['nc'] = nc  # override yaml value
-        # if anchors:
-        #     LOGGER.info(f'Overriding model.yaml anchors with anchors={anchors}')
-        #     self.yaml['anchors'] = round(anchors)  # override yaml value
-        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch], scale=scale)  # model, savelist
+        if 'scale' not in self.yaml.keys():
+             self.yaml['scale'] = scale
+        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch], scale=self.yaml['scale'])  # model, savelist
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         self.inplace = self.yaml.get('inplace', True)
 

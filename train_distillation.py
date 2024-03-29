@@ -18,6 +18,9 @@ import yaml
 from torch.optim import lr_scheduler
 from tqdm import tqdm
 from pathlib import Path
+
+from models.common import DetectMultiBackend
+
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
 
@@ -39,7 +42,7 @@ from utils.general import (LOGGER, TQDM_BAR_FORMAT, check_amp, check_dataset, ch
                            yaml_save)
 from utils.loggers import Loggers
 from utils.loggers.comet.comet_utils import check_comet_resume
-from utils.detect.loss_tal import NNDetectionLoss
+from utils.detect.loss_tal import NNDetectionLoss, NNDetectionLossDistill
 from utils.metrics import fitness
 from utils.plots import plot_evolve
 from utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, select_device, smart_DDP, smart_optimizer,
@@ -68,7 +71,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     use_amp, \
     info_only, \
     low_gpu_mem, \
-    model_scale = \
+    model_scale ,\
+    teach_weights,\
+    model_scale_teach, \
+    teach_freeze = \
         Path(opt.save_dir), \
         opt.epochs, \
         opt.batch_size, \
@@ -85,7 +91,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.amp, \
         opt.info_only, \
         opt.low_gpu_mem, \
-        opt.model_scale
+        opt.model_scale,  \
+        opt.teach_weights, \
+        opt.model_scale_teach, \
+        opt.teach_freeze,
     callbacks.run('on_pretrain_routine_start')
 
     # Directories
@@ -134,7 +143,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # Model
     check_suffix(weights, '.pt')  # check weights
+    check_suffix(teach_weights, '.pt')
     pretrained = weights.endswith('.pt')
+    teach_use_weights = teach_weights.endswith('.pt')
+    LOGGER.info(f"{colorstr('teacher use weight:')}{teach_use_weights}")  # report
+    LOGGER.info(f"{colorstr('------load Student-------')}")  # report
     if pretrained:
         with torch_distributed_zero_first(LOCAL_RANK):
             weights = attempt_download(weights)  # download if not found locally
@@ -147,6 +160,25 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     else:
         model = Model(cfg, ch=3, nc=nc, scale=model_scale).to(device)
         LOGGER.info(f"{colorstr('scale: ')}{model_scale} ")  # report
+    LOGGER.info(f"{colorstr('-------------------------')}")  # report
+
+    LOGGER.info(f"{colorstr('------load Teacher------')}")  # report
+    if teach_use_weights:
+        with torch_distributed_zero_first(LOCAL_RANK):
+            teach_weights = attempt_download(teach_weights)  # download if not found locally
+        teach_ckpt = torch.load(teach_weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
+        teach_model = Model(teach_ckpt['model'].yaml, ch=3, nc=nc).to(device)  # create
+        teach_csd = teach_ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
+        teach_csd = intersect_dicts(teach_csd, teach_model.state_dict())  # intersect
+        teach_model.load_state_dict(teach_csd, strict=False)  # load
+        LOGGER.info(f'Teacher transferred {len(teach_csd)}/{len(teach_model.state_dict())} items from {teach_weights}') # report
+    else:
+        LOGGER.error(f"{colorstr('teacher not found ')} ")  # report
+        LOGGER.info(f"{colorstr('-------------------------')}")  # report
+        return None
+
+
+
     if info_only:
         return None
 
@@ -155,7 +187,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         amp = False
         LOGGER.info(f"{colorstr('AMP:')}AMP off")
     else:
-        amp = check_amp(model)  # check AMP
+        amp = check_amp(model) and check_amp(teach_model) # check AMP
 
     # Freeze
     freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # layers to freeze
@@ -163,8 +195,16 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         # v.requires_grad = True  # train all layers TODO: uncomment this line as in master
         # v.register_hook(lambda x: torch.nan_to_num(x))  # NaN to 0 (commented for erratic training results)
         if any(x in k for x in freeze):
-            LOGGER.info(f'freezing {k}')
+            LOGGER.info(f'student-freezing {k}')
             v.requires_grad = False
+    if not teach_use_weights:
+        teach_freeze = [f'teach_model.{x}.' for x in (teach_freeze if len(teach_freeze) > 1 else range(teach_freeze[0]))]  # layers to freeze
+        for k, v in teach_model.named_parameters():
+            # v.requires_grad = True  # train all layers TODO: uncomment this line as in master
+            # v.register_hook(lambda x: torch.nan_to_num(x))  # NaN to 0 (commented for erratic training results)
+            if any(x in k for x in teach_freeze):
+                LOGGER.info(f'teach-freezing {k}')
+                v.requires_grad = False
 
     # Image size
     gs = max(int(model.stride.max()), 32)  # grid size (max stride)
@@ -191,7 +231,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # EMA
     ema = ModelEMA(model) if RANK in {-1, 0} else None
-
     # Resume
     best_fitness, start_epoch = 0.0, 0
     if pretrained:
@@ -204,10 +243,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         LOGGER.warning('WARNING ⚠️ DP not recommended, use torch.distributed.run for best DDP Multi-GPU results.\n'
                        'See Multi-GPU Tutorial at https://github.com/ultralytics/yolov5/issues/475 to get started.')
         model = torch.nn.DataParallel(model)
+        teach_model = torch.nn.DataParallel(teach_model)
 
     # SyncBatchNorm
     if opt.sync_bn and cuda and RANK != -1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model).to(device)
+        teach_model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(teach_model).to(device)
         LOGGER.info('Using SyncBatchNorm()')
 
     # Trainloader
@@ -248,12 +289,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
         if not resume:
             model.half().float()  # pre-reduce anchor precision
+            teach_model.half().float()  # pre-reduce anchor precision
 
         callbacks.run('on_pretrain_routine_end', labels, names)
 
     # DDP mode
     if cuda and RANK != -1:
         model = smart_DDP(model)
+        teach_model = smart_DDP(teach_model)
 
     # Model attributes
     model.nc = nc  # attach number of classes to model
@@ -273,7 +316,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     stopper, stop = EarlyStopping(patience=opt.patience), False
 
     # init loss class
-    compute_loss = NNDetectionLoss(model)
+    # compute_loss = NNDetectionLoss(model)
+    compute_loss = NNDetectionLossDistill(model)
     # compute_loss = NNDetectionLoss(model, use_qfl=True)  # use qfl for cls_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True)  # use fel for bbox_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True, use_qfl=True)  # use fel and qfl
@@ -286,6 +330,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         callbacks.run('on_train_epoch_start')
         model.train()
+        teach_model.eval()
 
         # Update image weights (optional, single-GPU only)
         if opt.image_weights:
@@ -301,7 +346,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         if RANK != -1:
             train_loader.sampler.set_epoch(epoch)
         pbar = enumerate(train_loader)
-        LOGGER.info(('\n' + '%11s' * 7) % ('Epoch', 'GPU_mem', 'box_loss', 'cls_loss', 'dfl_loss', 'Instances', 'Size'))
+        LOGGER.info(('\n' + '%11s' * 8) % ('Epoch', 'GPU_mem', 'box_loss', 'cls_loss', 'dfl_loss', 'distill_loss', 'Instances', 'Size'))
+        # LOGGER.info(('\n' + '%11s' * 7) % ('Epoch', 'GPU_mem', 'box_loss', 'cls_loss', 'dfl_loss', 'Instances', 'Size'))
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, bar_format=TQDM_BAR_FORMAT)  # progress bar
         optimizer.zero_grad()
@@ -334,7 +380,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
-                loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+                # if teach_use_weights:
+                with torch.no_grad():
+                    pred_teach = teach_model(imgs)[1]
+
+                loss, loss_items = compute_loss(pred, targets.to(device), pred_teach)  # loss scaled by batch_size
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
                 if opt.quad:
@@ -347,11 +397,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if ni - last_opt_step >= accumulate:
                 scaler.unscale_(optimizer)  # unscale gradients
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)  # clip gradients
+                if not teach_use_weights:
+                    torch.nn.utils.clip_grad_norm_(teach_model.parameters(), max_norm=10.0)  # clip gradients
                 scaler.step(optimizer)  # optimizer.step
                 scaler.update()
                 optimizer.zero_grad()
                 if ema:
                     ema.update(model)
+
                 last_opt_step = ni
 
 
@@ -359,8 +412,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if RANK in {-1, 0}:
                 mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
                 mem = f'{torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0:.3g}G'  # (GB)
-                pbar.set_description(('%11s' * 2 + '%11.4g' * 5) %
+                pbar.set_description(('%11s' * 2 + '%11.4g' * 6) %
                                      (f'{epoch + 1}/{epochs}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
+                # pbar.set_description(('%11s' * 2 + '%11.4g' * 5) %
+                #                      (f'{epoch + 1}/{epochs}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
                 callbacks.run('on_train_batch_end', model, ni, imgs, targets, paths, list(mloss))
                 if callbacks.stop_training:
                     return
@@ -398,9 +453,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
 
             # Save model
-
             if (not nosave) or (final_epoch and not evolve):  # if save
-
                 ckpt = {
                     'epoch': epoch + 1,
                     'best_fitness': best_fitness,
@@ -467,8 +520,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str, default='', help='initial weights path')
-    parser.add_argument('--cfg', type=str, default='yolov8m-base.yaml', help='model.yaml path')
+    parser.add_argument('--teach-weights', type=str, default='', help='teach weights path')
+    parser.add_argument('--cfg', type=str, default='yolov8m-base.yaml', help='teach_model.yaml path')
+    parser.add_argument('--teach-cfg', type=str, default='yolov8m-base.yaml', help='student_model.yaml path')
     parser.add_argument('--model-scale', type=str, default='n', help='model size')
+    parser.add_argument('--model-scale-teach', type=str, default='n', help='teacher model size')
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch.yaml', help='hyper parameters path')
     parser.add_argument('--epochs', type=int, default=100, help='total training epochs')
@@ -501,6 +557,7 @@ def parse_opt(known=False):
     parser.add_argument('--cos-lr', action='store_true', help='cosine LR scheduler')
     parser.add_argument('--patience', type=int, default=100, help='EarlyStopping patience (epochs without improvement)')
     parser.add_argument('--freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone=10, first3=0 1 2')
+    parser.add_argument('--teach-freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone=10, first3=0 1 2')
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
