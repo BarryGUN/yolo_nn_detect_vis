@@ -11,6 +11,7 @@ def set_scale(opt):
     ckpt = torch.load(weights, map_location='cpu')
     ckpt['model'].yaml['scale'] = scale
     torch.save(ckpt, weight_path)
+    torch.cuda.empty_cache()
     print('ok')
 
 
