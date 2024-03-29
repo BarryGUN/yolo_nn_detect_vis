@@ -174,7 +174,6 @@ class NNDetectionLoss:
         return loss.sum() * batch_size, loss.detach()  # loss(box, cls, dfl)
 
 
-
 class NNDetectionLossDistill:
     # Compute losses
     def __init__(self, model, use_dfl=True, use_qfl=False, use_fel=False):
@@ -296,12 +295,12 @@ class NNDetectionLossDistill:
                                                    fg_mask)
             target_bboxes_t /= stride_tensor_t
             loss_t[0], loss_t[2], iou_t = self.bbox_loss(pred_distri_t,
-                                                   pred_bboxes_t,
-                                                   anchor_points_t,
-                                                   target_bboxes_t,
-                                                   target_scores_t,
-                                                   target_scores_sum_t,
-                                                   fg_mask_t)
+                                                         pred_bboxes_t,
+                                                         anchor_points_t,
+                                                         target_bboxes_t,
+                                                         target_scores_t,
+                                                         target_scores_sum_t,
+                                                         fg_mask_t)
             loss[3] = torch.zeros(1, device=self.device)  # box, cls, dfl
             for idx in range(3):
                 loss[3] = loss[3] + self.distill(loss[idx], loss_t[idx])
