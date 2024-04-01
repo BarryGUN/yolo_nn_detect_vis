@@ -1,5 +1,3 @@
-
-
 import argparse
 import math
 import os
@@ -8,7 +6,6 @@ import sys
 import time
 from copy import deepcopy
 from datetime import datetime
-
 
 import numpy as np
 import torch
@@ -71,10 +68,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     use_amp, \
     info_only, \
     low_gpu_mem, \
-    model_scale ,\
-    teach_weights,\
-    model_scale_teach, \
-    teach_freeze = \
+    model_scale, \
+    teach_weights, \
+        = \
         Path(opt.save_dir), \
         opt.epochs, \
         opt.batch_size, \
@@ -91,10 +87,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.amp, \
         opt.info_only, \
         opt.low_gpu_mem, \
-        opt.model_scale,  \
+        opt.model_scale, \
         opt.teach_weights, \
-        opt.model_scale_teach, \
-        opt.teach_freeze,
+
     callbacks.run('on_pretrain_routine_start')
 
     # Directories
@@ -171,14 +166,16 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         teach_csd = teach_ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
         teach_csd = intersect_dicts(teach_csd, teach_model.state_dict())  # intersect
         teach_model.load_state_dict(teach_csd, strict=False)  # load
-        LOGGER.info(f'Teacher transferred {len(teach_csd)}/{len(teach_model.state_dict())} items from {teach_weights}') # report
+        LOGGER.info \
+            (f'Teacher transferred {len(teach_csd)}/{len(teach_model.state_dict())} items from {teach_weights}')  # report
+
     else:
         LOGGER.error(f"{colorstr('teacher not found ')} ")  # report
-        LOGGER.info(f"{colorstr('-------------------------')}")  # report
-        return None
+        raise FileNotFoundError("Teacher's weights not found. Please provide a weight file path to --teach-weights. "
+                                "i.e.'--teach-weigths path/to/teach.pt'")
+    LOGGER.info(f"{colorstr('-------------------------')}")  # report
 
-
-
+    # only check model details
     if info_only:
         return None
 
@@ -187,7 +184,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         amp = False
         LOGGER.info(f"{colorstr('AMP:')}AMP off")
     else:
-        amp = check_amp(model) and check_amp(teach_model) # check AMP
+        amp = check_amp(model) and check_amp(teach_model)  # check AMP
 
     # Freeze
     freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # layers to freeze
@@ -197,14 +194,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         if any(x in k for x in freeze):
             LOGGER.info(f'student-freezing {k}')
             v.requires_grad = False
-    # if not teach_use_weights:
-    #     teach_freeze = [f'teach_model.{x}.' for x in (teach_freeze if len(teach_freeze) > 1 else range(teach_freeze[0]))]  # layers to freeze
-    #     for k, v in teach_model.named_parameters():
-    #         # v.requires_grad = True  # train all layers TODO: uncomment this line as in master
-    #         # v.register_hook(lambda x: torch.nan_to_num(x))  # NaN to 0 (commented for erratic training results)
-    #         if any(x in k for x in teach_freeze):
-    #             LOGGER.info(f'teach-freezing {k}')
-    #             v.requires_grad = False
 
     # Image size
     gs = max(int(model.stride.max()), 32)  # grid size (max stride)
@@ -334,7 +323,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         callbacks.run('on_train_epoch_start')
         model.train()
-        teach_model.eval()
+        teach_model.eval()  # only use teacher model to predict
 
         # Update image weights (optional, single-GPU only)
         if opt.image_weights:
@@ -351,7 +340,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         if RANK != -1:
             train_loader.sampler.set_epoch(epoch)
         pbar = enumerate(train_loader)
-        LOGGER.info(('\n' + '%11s' * 5 + '%15s' + '%11s' * 2) % ('Epoch', 'GPU_mem', 'box_loss', 'cls_loss', 'dfl_loss', 'distill_loss', 'Instances', 'Size'))
+        LOGGER.info(('\n' + '%11s' * 5 + '%15s' + '%11s' * 2) %
+                    ('Epoch', 'GPU_mem', 'box_loss', 'cls_loss', 'dfl_loss', 'distill_loss', 'Instances', 'Size'))
         # LOGGER.info(('\n' + '%11s' * 7) % ('Epoch', 'GPU_mem', 'box_loss', 'cls_loss', 'dfl_loss', 'Instances', 'Size'))
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, bar_format=TQDM_BAR_FORMAT)  # progress bar
@@ -408,7 +398,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     ema.update(model)
 
                 last_opt_step = ni
-
 
             # Log
             if RANK in {-1, 0}:
@@ -527,7 +516,6 @@ def parse_opt(known=False):
     parser.add_argument('--cfg', type=str, default='yolov8m-base.yaml', help='teach_model.yaml path')
     parser.add_argument('--teach-cfg', type=str, default='yolov8m-base.yaml', help='student_model.yaml path')
     parser.add_argument('--model-scale', type=str, default='n', help='model size')
-    parser.add_argument('--model-scale-teach', type=str, default='n', help='teacher model size')
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch.yaml', help='hyper parameters path')
     parser.add_argument('--epochs', type=int, default=100, help='total training epochs')
@@ -560,7 +548,6 @@ def parse_opt(known=False):
     parser.add_argument('--cos-lr', action='store_true', help='cosine LR scheduler')
     parser.add_argument('--patience', type=int, default=100, help='EarlyStopping patience (epochs without improvement)')
     parser.add_argument('--freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone=10, first3=0 1 2')
-    parser.add_argument('--teach-freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone=10, first3=0 1 2')
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
