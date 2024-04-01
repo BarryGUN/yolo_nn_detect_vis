@@ -137,6 +137,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     is_coco = isinstance(val_path, str) and val_path.endswith('coco/val2017.txt')  # COCO dataset
 
     # Model
+    # --------student-------
     check_suffix(weights, '.pt')  # check weights
     check_suffix(teach_weights, '.pt')
     pretrained = weights.endswith('.pt')
@@ -155,8 +156,13 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     else:
         model = Model(cfg, ch=3, nc=nc, scale=model_scale).to(device)
         LOGGER.info(f"{colorstr('scale: ')}{model_scale} ")  # report
-    LOGGER.info(f"{colorstr('-------------------------')}")  # report
+    # stu_amp check
+    stu_amp = False
+    if use_amp:
+        stu_amp = check_amp(model)
 
+    LOGGER.info(f"{colorstr('-------------------------')}")  # report
+    # --------teacher-------
     LOGGER.info(f"{colorstr('------load Teacher------')}")  # report
     if teach_use_weights:
         with torch_distributed_zero_first(LOCAL_RANK):
@@ -168,7 +174,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         teach_model.load_state_dict(teach_csd, strict=False)  # load
         LOGGER.info \
             (f'Teacher transferred {len(teach_csd)}/{len(teach_model.state_dict())} items from {teach_weights}')  # report
-
+        # teacher amp check
+        teach_amp = False
+        if use_amp:
+            teach_amp = check_amp(teach_model)
     else:
         LOGGER.error(f"{colorstr('teacher not found ')} ")  # report
         raise FileNotFoundError("Teacher's weights not found. Please provide a weight file path to --teach-weights. "
@@ -184,7 +193,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         amp = False
         LOGGER.info(f"{colorstr('AMP:')}AMP off")
     else:
-        amp = check_amp(model) and check_amp(teach_model)  # check AMP
+        amp = stu_amp and teach_amp
+        if amp:
+            LOGGER.info(f"{colorstr('AMP:')}check passed")
+        else:
+            LOGGER.info(f"{colorstr('AMP:')}check failed")
 
     # Freeze
     freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # layers to freeze
