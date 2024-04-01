@@ -514,7 +514,6 @@ def parse_opt(known=False):
     parser.add_argument('--weights', type=str, default='', help='initial weights path')
     parser.add_argument('--teach-weights', type=str, default='', help='teach weights path')
     parser.add_argument('--cfg', type=str, default='yolov8m-base.yaml', help='teach_model.yaml path')
-    parser.add_argument('--teach-cfg', type=str, default='yolov8m-base.yaml', help='student_model.yaml path')
     parser.add_argument('--model-scale', type=str, default='n', help='model size')
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch.yaml', help='hyper parameters path')
