@@ -1,4 +1,4 @@
-#YOLONN
+# YOLONN
 """
 Validate a trained YOLOv5 detection model on a detection dataset
 
@@ -44,7 +44,6 @@ from utils.general import (LOGGER, TQDM_BAR_FORMAT, Profile, check_dataset, chec
 from utils.metrics import ConfusionMatrix, ap_per_class, box_iou
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
-
 
 
 def save_one_txt(predn, save_conf, shape, file):
@@ -123,11 +122,13 @@ def run(
         min_items=0,  # Experimental
         model=None,
         tea_model=None,
+        inject_layer=None,
         dataloader=None,
         save_dir=Path(''),
         plots=True,
         callbacks=Callbacks(),
         compute_loss=None,
+        distill_gain=0,
 ):
     # Initialize/load model and set device
     training = model is not None
@@ -135,7 +136,9 @@ def run(
         device, pt, jit, engine = next(model.parameters()).device, True, False, False  # get model device, PyTorch model
         half &= device.type != 'cpu'  # half precision only supported on CUDA
         model.half() if half else model.float()
-        tea_model.half() if half else tea_model.float()
+        if tea_model is not None:
+            tea_model.half() if half else tea_model.float()
+        compute_loss.distill.half() if half else tea_model.float()
 
     else:  # called directly
         device = select_device(device, batch_size=batch_size)
@@ -159,7 +162,6 @@ def run(
 
         # Data
         data = check_dataset(data)  # check
-
 
     model.eval()
     # info only
@@ -219,12 +221,22 @@ def run(
 
         # Inference
         with dt[1]:
-            preds, train_out = model(im) if compute_loss else (model(im, augment=augment), None)
-            preds_teach, tea_out = tea_model(im) if compute_loss else (tea_model(im, augment=augment), None)
+            # preds, train_out = model(im) if compute_loss else (model(im, augment=augment), None)
+            final_out, feature_stu = model(im) if compute_loss else (model(im, augment=augment), None)
+            preds, train_out = final_out
+            feature_tea = None
+            if tea_model is not None:
+                final_out_tea, feature_tea = tea_model(im) if compute_loss else (tea_model(im, augment=augment), None)
+            # preds_teach, tea_out = final_out_tea
+            # preds_teach, feature_tea = tea_model(im) if compute_loss else (tea_model(im, augment=augment), None)
 
         # Loss
         if compute_loss:
-            loss += compute_loss(train_out, targets, tea_out)[1]  # box, obj, cls
+            loss += compute_loss(stu_feature=feature_stu,
+                                 teach_feature=feature_tea,
+                                 pred=train_out,
+                                 targets=targets,
+                                 distill_gain=distill_gain)[1]
 
         # NMS
         targets[:, 2:] *= torch.tensor((width, height, width, height), device=device)  # to pixels
@@ -308,7 +320,7 @@ def run(
         shape = (batch_size, 3, imgsz, imgsz)
         LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {shape}' % t)
         fps = 1000 / sum(t)
-        LOGGER.info(f'FPS:{round(fps,3)}')
+        LOGGER.info(f'FPS:{round(fps, 3)}')
 
     # Plots
     if plots:
@@ -387,7 +399,7 @@ def parse_opt():
 
 
 def main(opt):
-    #check_requirements(exclude=('tensorboard', 'thop'))
+    # check_requirements(exclude=('tensorboard', 'thop'))
 
     if opt.task in ('train', 'val', 'test'):  # run normally
         if opt.conf_thres > 0.001:  # https://github.com/ultralytics/yolov5/issues/1466

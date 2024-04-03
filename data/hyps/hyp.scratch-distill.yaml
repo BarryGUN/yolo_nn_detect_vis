@@ -13,7 +13,7 @@ warmup_bias_lr: 0.1  # warmup initial bias lr
 box: 7.5  # box loss gain  7.5
 cls: 0.5  # cls loss gain  0.5
 dfl: 1.5  # dfl loss gain  1.5
-distill: 0.5 # distill loss gain (0.5)
+distill: 1 # distill loss gain (0.5)
 qfl_gamma: 1.5 # qfl gamma gain
 qfl_alpha: 0.25 # qfl alpha gain
 hsv_h: 0.015  # image HSV-Hue augmentation (fraction)

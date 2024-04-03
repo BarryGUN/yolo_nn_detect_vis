@@ -46,16 +46,25 @@ class BaseModel(nn.Module):
 
     def _forward_once(self, x, profile=False, visualize=False):
         y, dt = [], []  # outputs
-        for m in self.model:
+        i = 0
+        distill_feature = []
+        for i, m in enumerate(self.model):
             if m.f != -1:  # if not from previous layer
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
             if profile:
                 self._profile_one_layer(m, x, dt)
             x = m(x)  # run
+            # save inject layer for distill
+            if self.distill and i in self.inject_layer:
+                distill_feature.append(x)
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
-        return x
+        if not self.distill:
+            return x
+        else:
+            return x, distill_feature
+        # return x
 
     def _profile_one_layer(self, m, x, dt):
         c = m == self.model[-1]  # is final layer, copy input as inplace fix
@@ -103,7 +112,8 @@ class BaseModel(nn.Module):
 
 class DetectionModel(BaseModel):
     # YOLONN detection model
-    def __init__(self, cfg='yolonn-vis.yaml', ch=3, nc=None, scale='n'):  # model, input channels, number of classes
+    def __init__(self, cfg='yolonn-vis.yaml', ch=3, nc=None, scale='n', inject_layer=None,
+                 distill=False):  # model, input channels, number of classes
         super().__init__()
         if isinstance(cfg, dict):
             self.yaml = cfg  # model dict
@@ -119,17 +129,38 @@ class DetectionModel(BaseModel):
             LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
             self.yaml['nc'] = nc  # override yaml value
         if 'scale' not in self.yaml.keys():
-             self.yaml['scale'] = scale
-        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch], scale=self.yaml['scale'])  # model, savelist
+            self.yaml['scale'] = scale
+
+        self.distill = distill
+        self.inject_layer = inject_layer
+        if self.distill:
+            self.inject_layer = inject_layer
+            model_res = parse_model(deepcopy(self.yaml),
+                                    ch=[ch],
+                                    scale=self.yaml['scale'],
+                                    out_ch_index=self.inject_layer)  # model, savelist
+
+            self.model, self.save, self.inject_layer_ch = model_res
+            # print(type(model_res[0]))
+        else:
+            self.model, self.save = parse_model(deepcopy(self.yaml),
+                                                ch=[ch],
+                                                scale=self.yaml['scale'],
+                                                out_ch_index=None)  # model, savelist
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         self.inplace = self.yaml.get('inplace', True)
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
-        if isinstance(m, (NNDetect)):
+
+        if isinstance(m, NNDetect):
             s = 256  # 2x min stride
             m.inplace = self.inplace
-            forward = lambda x: self.forward(x)[0] if isinstance(m, NNDetect) else self.forward(x)
+            if self.distill:
+                forward = lambda x: self.forward(x)[0][0] if isinstance(m, NNDetect) else self.forward(x)
+            else:
+                forward = lambda x: self.forward(x)[0] if isinstance(m, NNDetect) else self.forward(x)
+            # forward = lambda x: self.forward(x)[0] if isinstance(m, NNDetect) else self.forward(x)
             m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
             # check_anchor_order(m)
             # m.anchors /= m.stride.view(-1, 1, 1)
@@ -193,7 +224,7 @@ class DetectionModel(BaseModel):
 Model = DetectionModel  # retain YOLONN 'Model' class for backwards compatibility
 
 
-def parse_model(d, ch, scale):  # model_dict, input_channels(3)
+def parse_model(d, ch, scale, out_ch_index=None):  # model_dict, input_channels(3)
     # Parse a YOLONN model.yaml dictionary
     LOGGER.info(
         f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'in':>3}{' ':>3}{'out':<10} {'arguments':<30}")
@@ -216,6 +247,7 @@ def parse_model(d, ch, scale):  # model_dict, input_channels(3)
         LOGGER.info(f"{colorstr('activation:')} {act}")  # print
 
     layers, save, c2, c1_pr = [], [], ch[-1], ch[-1]  # layers, savelist, ch out
+    distill_layer_ch = []
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
         m = eval(m) if isinstance(m, str) else m  # eval strings
         for j, a in enumerate(args):
@@ -241,9 +273,9 @@ def parse_model(d, ch, scale):  # model_dict, input_channels(3)
             c2 = sum(ch[x] for x in f)
         elif m in (CBFuse, ReConvFuse):
             c2 = ch[f[-1]]
-            if m is ReConvFuse :
+            if m is ReConvFuse:
                 args.insert(1, c2)
-        elif m in (CBLinear, ):
+        elif m in (CBLinear,):
             c2 = args[0]
             cho = []
             for out in c2:
@@ -265,11 +297,20 @@ def parse_model(d, ch, scale):  # model_dict, input_channels(3)
         t = str(m)[8:-2].replace('__main__.', '')  # module type
         np = sum(x.numel() for x in m_.parameters())  # number params
         m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params
-        LOGGER.info(f'{i:>3}{str(f):>18}{n_:>3}{np:10.0f}  {t:<40}{c1_pr:>3}{" ":>3}{str(c2):<10} {str(args):<30}')  # print
+        LOGGER.info(
+            f'{i:>3}{str(f):>18}{n_:>3}{np:10.0f}  {t:<40}{c1_pr:>3}{" ":>3}{str(c2):<10} {str(args):<30}')  # print
         # LOGGER.info(f'{i:>3}{str(f):>18}{n_:>3}{np:10.0f}  {t:<40}{str(args):<30}')  # print
         save.extend(x % i for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
         layers.append(m_)
         if i == 0:
             ch = []
         ch.append(c2)
-    return nn.Sequential(*layers), sorted(save)
+        if out_ch_index is not None and i in out_ch_index:
+            distill_layer_ch.append(c2)
+
+    if out_ch_index is None:
+        return nn.Sequential(*layers), sorted(save)
+    else:
+        return nn.Sequential(*layers), sorted(save), distill_layer_ch
+    # return nn.Sequential(*layers), sorted(save)
+

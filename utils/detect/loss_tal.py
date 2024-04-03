@@ -1,4 +1,3 @@
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
 """
 Loss functions
 """
@@ -10,13 +9,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from utils.general import xywh2xyxy
-from utils.loss.loss_utils import smooth_BCE, QFocalLoss
+from utils.loss.loss_utils import smooth_BCE, QFocalLoss, CWDLoss
 from utils.metrics import bbox_iou
 from utils.detect.assigner.tal.anchor_generator import dist2bbox, make_anchors, bbox2dist
 from utils.detect.assigner.tal.assigner import TaskAlignedAssigner
 from utils.torch_utils import de_parallel
 
 
+# ------sub loss------
 class BboxLoss(nn.Module):
     def __init__(self, reg_max, use_dfl=False, use_fel=False):
         super().__init__()
@@ -65,6 +65,41 @@ class BboxLoss(nn.Module):
                 F.cross_entropy(pred_dist, tr.view(-1), reduction='none').view(tl.shape) * wr).mean(-1, keepdim=True)
 
 
+class FeatureLoss(nn.Module):
+    def __init__(self,
+                 channels_s,
+                 channels_t):
+        super(FeatureLoss, self).__init__()
+
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.align_module = nn.ModuleList([
+            nn.Conv2d(stu_channel, tea_channel, kernel_size=1, stride=1,
+                      padding=0).to(device)
+            for stu_channel, tea_channel in zip(channels_s, channels_t)
+        ])
+        self.norm = [
+            nn.BatchNorm2d(tea_channel, affine=False).to(device)
+            for tea_channel in channels_t
+        ]
+
+        self.feature_loss = CWDLoss()
+
+    def forward(self, y_s, y_t):
+        assert len(y_s) == len(y_t)
+        tea_feats = []
+        stu_feats = []
+
+        for idx, (s, t) in enumerate(zip(y_s, y_t)):
+            s = self.align_module[idx](s)
+            s = self.norm[idx](s)
+            t = self.norm[idx](t)
+            tea_feats.append(t)
+            stu_feats.append(s)
+
+        return self.feature_loss(stu_feats, tea_feats)
+
+
+# ------hyper loss------
 class NNDetectionLoss:
     # Compute losses
     def __init__(self, model, use_dfl=True, use_qfl=False, use_fel=False):
@@ -174,20 +209,24 @@ class NNDetectionLoss:
         return loss.sum() * batch_size, loss.detach()  # loss(box, cls, dfl)
 
 
-class NNDetectionLossDistill:
+class NNDetectionLossDistillFeatureBased:
     # Compute losses
-    def __init__(self, model, use_dfl=True, use_qfl=False, use_fel=False):
-        device = next(model.parameters()).device  # get model device
+    def __init__(self,
+                 stu_model,
+                 teach_model,
+                 use_dfl=True,
+                 use_qfl=False):
+        device = next(stu_model.parameters()).device  # get model device
         # h = model.hyp  # hyperparameters
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         # self.cp, self.cn = smooth_BCE(eps=h.get("label_smoothing", 0.0))  # positive, negative BCE targets
 
-        m = de_parallel(model).model[-1]  # Detect() module
+        m = de_parallel(stu_model).model[-1]  # Detect() module
         # self.balance = {3: [4.0, 1.0, 0.4]}.get(m.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
 
         # Define criteria
-        self.hyp = model.hyp
+        self.hyp = stu_model.hyp
         if use_qfl:
             self.cls_loss = QFocalLoss(loss_fcn=nn.BCEWithLogitsLoss(reduction='none'),
                                        gamma=self.hyp['qfl_gamma'],
@@ -195,7 +234,9 @@ class NNDetectionLossDistill:
         else:
             self.cls_loss = nn.BCEWithLogitsLoss(reduction='none')
 
-        self.distill = nn.MSELoss()
+        self.distill = FeatureLoss(channels_t=teach_model.inject_layer_ch,
+                                   channels_s=stu_model.inject_layer_ch)
+        # self.distill = DistillLoss()
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
@@ -231,8 +272,6 @@ class NNDetectionLossDistill:
             b, a, c = pred_dist.shape  # batch, anchors, channels
             pred_dist = pred_dist.view(b, a, 4, c // 4).softmax(3).matmul(self.proj.type(pred_dist.dtype))
         return dist2bbox(pred_dist, anchor_points, xywh=False)
-
-
 
     def __get_detect_loss__(self, p, targets):
         loss = torch.zeros(3, device=self.device)  # box, cls, dfl
@@ -282,28 +321,25 @@ class NNDetectionLossDistill:
         return loss, batch_size
 
     def __get_distill_loss__(self, st, tea):
-        loss = torch.zeros(1, device=self.device)  # box, cls, dfl
-        weight_list = (self.hyp['box'], self.hyp['cls'], self.hyp['dfl'])
-        for idx in range(3):
-            loss += weight_list[idx] * self.distill(st[idx], tea[idx])
-        return loss
+        return self.distill(st, tea)
 
-    def __call__(self, stu, targets, teach):
+    def __call__(self,
+                 stu_feature,
+                 teach_feature=None,
+                 pred=None,
+                 targets=None,
+                 distill_gain=0):
         loss = torch.zeros(4, device=self.device)  # box, cls, dfl
-        loss_stu, batch_size = self.__get_detect_loss__(stu, targets)
-        with torch.no_grad():
-            loss_tea, _ = self.__get_detect_loss__(teach, targets)
+        loss_stu, batch_size = self.__get_detect_loss__(pred, targets)
 
-        loss_distill = self.__get_distill_loss__(loss_stu, loss_tea)
+        if teach_feature is not None:
+            loss[3] = distill_gain * self.__get_distill_loss__(stu_feature, teach_feature)
 
         for idx in range(3):
             loss[idx] = loss_stu[idx]
 
-        loss[3] = loss_distill
-
         loss[0] *= self.hyp['box']  # box gain
         loss[1] *= self.hyp['cls']  # cls gain
         loss[2] *= self.hyp['dfl']  # dfl gain
-        loss[3] *= self.hyp['distill']  # distill gain
 
         return loss.sum() * batch_size, loss.detach()  # loss(box, cls, dfl, distill)

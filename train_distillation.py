@@ -17,6 +17,7 @@ from tqdm import tqdm
 from pathlib import Path
 
 from models.common import DetectMultiBackend
+from utils.distill_utils import cosine_annealing_gain_decay
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -39,7 +40,7 @@ from utils.general import (LOGGER, TQDM_BAR_FORMAT, check_amp, check_dataset, ch
                            yaml_save)
 from utils.loggers import LoggersDistill
 from utils.loggers.comet.comet_utils import check_comet_resume
-from utils.detect.loss_tal import NNDetectionLoss, NNDetectionLossDistill
+from utils.detect.loss_tal import NNDetectionLoss, NNDetectionLossDistillFeatureBased
 from utils.metrics import fitness
 from utils.plots import plot_evolve
 from utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, select_device, smart_DDP, smart_optimizer,
@@ -70,6 +71,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     low_gpu_mem, \
     model_scale, \
     teach_weights, \
+    distill_stop_epochs, \
+    inject_layers \
         = \
         Path(opt.save_dir), \
         opt.epochs, \
@@ -89,6 +92,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.low_gpu_mem, \
         opt.model_scale, \
         opt.teach_weights, \
+        opt.distill_stop_epochs, \
+        opt.inject_layers
 
     callbacks.run('on_pretrain_routine_start')
 
@@ -137,6 +142,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     is_coco = isinstance(val_path, str) and val_path.endswith('coco/val2017.txt')  # COCO dataset
 
     # Model
+
     # --------student-------
     check_suffix(weights, '.pt')  # check weights
     check_suffix(teach_weights, '.pt')
@@ -148,13 +154,13 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         with torch_distributed_zero_first(LOCAL_RANK):
             weights = attempt_download(weights)  # download if not found locally
         ckpt = torch.load(weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
-        model = Model(cfg or ckpt['model'].yaml, ch=3, nc=nc).to(device)  # create
+        model = Model(cfg or ckpt['model'].yaml, ch=3, nc=nc, distill=True, inject_layer=inject_layers).to(device)  # create
         csd = ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
         csd = intersect_dicts(csd, model.state_dict())  # intersect
         model.load_state_dict(csd, strict=False)  # load
         LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')  # report
     else:
-        model = Model(cfg, ch=3, nc=nc, scale=model_scale).to(device)
+        model = Model(cfg, ch=3, nc=nc, scale=model_scale, distill=True, inject_layer=inject_layers).to(device)
         LOGGER.info(f"{colorstr('scale: ')}{model_scale} ")  # report
     # stu_amp check
     stu_amp = False
@@ -168,7 +174,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         with torch_distributed_zero_first(LOCAL_RANK):
             teach_weights = attempt_download(teach_weights)  # download if not found locally
         teach_ckpt = torch.load(teach_weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
-        teach_model = Model(teach_ckpt['model'].yaml, ch=3, nc=nc).to(device)  # create
+        teach_model = Model(teach_ckpt['model'].yaml, ch=3, nc=nc, distill=True, inject_layer=inject_layers).to(device)  # create
         teach_csd = teach_ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
         teach_csd = intersect_dicts(teach_csd, teach_model.state_dict())  # intersect
         teach_model.load_state_dict(teach_csd, strict=False)  # load
@@ -287,7 +293,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                        rank=-1,
                                        workers=workers * 2,
                                        pad=0.5,
-                                       prefix=colorstr('val: '))[0]
+                                       prefix=colorstr('val: '),
+                                       )[0]
 
         if not resume:
             model.half().float()  # pre-reduce anchor precision
@@ -323,7 +330,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # init loss class
     # compute_loss = NNDetectionLoss(model)
-    compute_loss = NNDetectionLossDistill(model)
+    compute_loss = NNDetectionLossDistillFeatureBased(stu_model=model,
+                                                      teach_model=teach_model)
     # compute_loss = NNDetectionLoss(model, use_qfl=True)  # use qfl for cls_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True)  # use fel for bbox_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True, use_qfl=True)  # use fel and qfl
@@ -333,11 +341,25 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 f'Using {train_loader.num_workers * WORLD_SIZE} dataloader workers\n'
                 f"Logging results to {colorstr('bold', save_dir)}\n"
                 f'Starting training for {epochs} epochs...')
+
+    # distillation init
+    init_distill_gain = hyp['distill']
+    if epochs != distill_stop_epochs != -1:
+        LOGGER.info(f'{colorstr("Distillation: ")}Distillation Weight Decay for {distill_stop_epochs} epochs')
+    else:
+        distill_stop_epochs = epochs
+        LOGGER.info(f'{colorstr("Distillation: ")}"Distillation with Decay Throughout the Entire Process" ')
+
+    if distill_stop_epochs > epochs:
+        raise ArithmeticError('Stop epochs cannot larger than total epochs')
+
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         callbacks.run('on_train_epoch_start')
         model.train()
         teach_model.eval()  # only use teacher model to predict
 
+        momentum_distill_gain = cosine_annealing_gain_decay(init_distill_gain, epochs=distill_stop_epochs,
+                                                            epoch=epoch + 1)
         # Update image weights (optional, single-GPU only)
         if opt.image_weights:
             cw = model.class_weights.cpu().numpy() * (1 - maps) ** 2 / nc  # class weights
@@ -387,11 +409,17 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
             # Forward
             with torch.cuda.amp.autocast(amp):
-                pred = model(imgs)  # forward
+                pred, st_feature = model(imgs)  # forward
                 with torch.no_grad():
-                    pred_teach = teach_model(imgs)[1]
+                    _, tea_feature = teach_model(imgs)
 
-                loss, loss_items = compute_loss(pred, targets.to(device), pred_teach)  # loss scaled by batch_size
+                loss, loss_items = compute_loss(stu_feature=st_feature,
+                                                teach_feature=tea_feature,
+                                                pred=pred,
+                                                targets=targets.to(device),
+                                                distill_gain=momentum_distill_gain)  # loss scaled by batch_size
+
+
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
                 if opt.quad:
@@ -447,7 +475,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                 save_dir=save_dir,
                                                 plots=False,
                                                 callbacks=callbacks,
-                                                compute_loss=compute_loss)
+                                                compute_loss=compute_loss,
+                                                inject_layer=inject_layers)
 
             # Update best mAP
             fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
@@ -526,12 +555,14 @@ def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str, default='', help='initial weights path')
     parser.add_argument('--teach-weights', type=str, default='', help='teach weights path')
+    parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs, -1 for autobatch')
     parser.add_argument('--cfg', type=str, default='yolov8m-base.yaml', help='teach_model.yaml path')
     parser.add_argument('--model-scale', type=str, default='n', help='model size')
+    parser.add_argument('--distill-stop-epochs', type=int, default=250,
+                        help='epoch stop distill, set -1 means never stop distill')
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch.yaml', help='hyper parameters path')
-    parser.add_argument('--epochs', type=int, default=100, help='total training epochs')
-    parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs, -1 for autobatch')
+    parser.add_argument('--epochs', type=int, default=600, help='total training epochs')
     parser.add_argument('--low-gpu-mem', action='store_true',
                         help='clean gpu cache every epoch, fit to low mem gpu, but will reduce the training speed')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)')
@@ -570,6 +601,11 @@ def parse_opt(known=False):
     parser.add_argument('--upload_dataset', nargs='?', const=True, default=False, help='Upload data, "val" option')
     parser.add_argument('--bbox_interval', type=int, default=-1, help='Set bounding-box image logging interval')
     parser.add_argument('--artifact_alias', type=str, default='latest', help='Version of dataset artifact to use')
+    parser.add_argument(
+        '--inject-layers',
+        nargs='+',
+        default=[4, 6, 9],
+        help='distill layaers')
 
     return parser.parse_known_args()[0] if known else parser.parse_args()
 
