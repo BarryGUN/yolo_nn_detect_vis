@@ -605,7 +605,7 @@ def parse_opt(known=False):
         '--inject-layers',
         nargs='+',
         default=[4, 6, 9],
-        help='distill layaers')
+        help='distill layers')
 
     return parser.parse_known_args()[0] if known else parser.parse_args()
 
