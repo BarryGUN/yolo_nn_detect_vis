@@ -7,4 +7,5 @@ def cosine_annealing_gain_decay(init_gain, epochs, epoch):
     else:
         # return self.hyp['distill'] * ((1 - math.cos(epoch * math.pi / self.epochs))
         #                               / 2) * (0.1 - 1) + 1
-        return init_gain * (1 - math.cos(epoch * math.pi / epochs) / 2)
+        return init_gain * (((1 - math.cos(epoch * math.pi / epochs))
+                                      / 2) * (0.1 - 1) + 1)
