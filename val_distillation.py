@@ -138,7 +138,6 @@ def run(
         model.half() if half else model.float()
         if tea_model is not None:
             tea_model.half() if half else tea_model.float()
-        compute_loss.distill.half() if half else tea_model.float()
 
     else:  # called directly
         device = select_device(device, batch_size=batch_size)
@@ -222,21 +221,19 @@ def run(
         # Inference
         with dt[1]:
             # preds, train_out = model(im) if compute_loss else (model(im, augment=augment), None)
-            final_out, feature_stu = model(im) if compute_loss else (model(im, augment=augment), None)
-            preds, train_out = final_out
+
             feature_tea = None
             if tea_model is not None:
                 final_out_tea, feature_tea = tea_model(im) if compute_loss else (tea_model(im, augment=augment), None)
-            # preds_teach, tea_out = final_out_tea
-            # preds_teach, feature_tea = tea_model(im) if compute_loss else (tea_model(im, augment=augment), None)
+            final_out, distill_loss = model(im, tea_feature=feature_tea) if compute_loss else (model(im, augment=augment), None)
+            preds, train_out = final_out
+
 
         # Loss
         if compute_loss:
-            loss += compute_loss(stu_feature=feature_stu,
-                                 teach_feature=feature_tea,
-                                 pred=train_out,
+            loss += compute_loss(pred=train_out,
                                  targets=targets,
-                                 distill_gain=distill_gain)[1]
+                                 distill_loss=distill_gain * distill_loss)[1]
 
         # NMS
         targets[:, 2:] *= torch.tensor((width, height, width, height), device=device)  # to pixels

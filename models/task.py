@@ -19,6 +19,7 @@ from models.head import NNDetect
 from models.net import C2f, C2ELAN, LightC2ELAN
 from models.net_spp import SPPF, \
     SPPCSPC, SPP
+from utils.detect.loss_tal import FeatureLoss
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLONN root directory
@@ -41,12 +42,11 @@ except ImportError:
 
 class BaseModel(nn.Module):
     # YOLOnn base model
-    def forward(self, x, profile=False, visualize=False):
-        return self._forward_once(x, profile, visualize)  # single-scale inference, train
+    def forward(self, x, profile=False, visualize=False, tea_feature=None):
+        return self._forward_once(x, profile, visualize, tea_feature=tea_feature)  # single-scale inference, train
 
-    def _forward_once(self, x, profile=False, visualize=False):
+    def _forward_once(self, x, profile=False, visualize=False, tea_feature=None):
         y, dt = [], []  # outputs
-        i = 0
         distill_feature = []
         for i, m in enumerate(self.model):
             if m.f != -1:  # if not from previous layer
@@ -63,7 +63,10 @@ class BaseModel(nn.Module):
         if not self.distill:
             return x
         else:
-            return x, distill_feature
+            if tea_feature is not None:
+                return x, self.distill_loss(distill_feature, tea_feature)
+            else:
+                return x, distill_feature
         # return x
 
     def _profile_one_layer(self, m, x, dt):
@@ -113,7 +116,7 @@ class BaseModel(nn.Module):
 class DetectionModel(BaseModel):
     # YOLONN detection model
     def __init__(self, cfg='yolonn-vis.yaml', ch=3, nc=None, scale='n', inject_layer=None,
-                 distill=False):  # model, input channels, number of classes
+                 distill=False, tea_inject_layers_ch=None):  # model, input channels, number of classes
         super().__init__()
         if isinstance(cfg, dict):
             self.yaml = cfg  # model dict
@@ -149,6 +152,8 @@ class DetectionModel(BaseModel):
                                                 out_ch_index=None)  # model, savelist
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         self.inplace = self.yaml.get('inplace', True)
+        if tea_inject_layers_ch is not None:
+            self.distill_loss = FeatureLoss(channels_s=self.inject_layer_ch, channels_t=tea_inject_layers_ch)
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
@@ -173,10 +178,10 @@ class DetectionModel(BaseModel):
         self.info()
         LOGGER.info('')
 
-    def forward(self, x, augment=False, profile=False, visualize=False):
+    def forward(self, x, augment=False, profile=False, visualize=False, tea_feature=None):
         if augment:
             return self._forward_augment(x)  # augmented inference, None
-        return self._forward_once(x, profile, visualize)  # single-scale inference, train
+        return self._forward_once(x, profile, visualize, tea_feature=tea_feature)  # single-scale inference, train
 
     def _forward_augment(self, x):
         img_size = x.shape[-2:]  # height, width

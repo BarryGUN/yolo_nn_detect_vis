@@ -40,7 +40,8 @@ from utils.general import (LOGGER, TQDM_BAR_FORMAT, check_amp, check_dataset, ch
                            yaml_save)
 from utils.loggers import LoggersDistill
 from utils.loggers.comet.comet_utils import check_comet_resume
-from utils.detect.loss_tal import NNDetectionLoss, NNDetectionLossDistillFeatureBased
+from utils.detect.loss_tal import NNDetectionLoss, NNDetectionLossDistillFeatureBased, \
+    NNDetectionLossDistillFeatureEmbed
 from utils.metrics import fitness
 from utils.plots import plot_evolve
 from utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, select_device, smart_DDP, smart_optimizer,
@@ -142,39 +143,16 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     is_coco = isinstance(val_path, str) and val_path.endswith('coco/val2017.txt')  # COCO dataset
 
     # Model
-
-    # --------student-------
-    check_suffix(weights, '.pt')  # check weights
-    check_suffix(teach_weights, '.pt')
-    pretrained = weights.endswith('.pt')
-    teach_use_weights = teach_weights.endswith('.pt')
-    LOGGER.info(f"{colorstr('teacher use weight:')}{teach_use_weights}")  # report
-    LOGGER.info(f"{colorstr('------load Student-------')}")  # report
-    if pretrained:
-        with torch_distributed_zero_first(LOCAL_RANK):
-            weights = attempt_download(weights)  # download if not found locally
-        ckpt = torch.load(weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
-        model = Model(cfg or ckpt['model'].yaml, ch=3, nc=nc, distill=True, inject_layer=inject_layers).to(device)  # create
-        csd = ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
-        csd = intersect_dicts(csd, model.state_dict())  # intersect
-        model.load_state_dict(csd, strict=False)  # load
-        LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')  # report
-    else:
-        model = Model(cfg, ch=3, nc=nc, scale=model_scale, distill=True, inject_layer=inject_layers).to(device)
-        LOGGER.info(f"{colorstr('scale: ')}{model_scale} ")  # report
-    # stu_amp check
-    stu_amp = False
-    if use_amp:
-        stu_amp = check_amp(model)
-
-    LOGGER.info(f"{colorstr('-------------------------')}")  # report
     # --------teacher-------
     LOGGER.info(f"{colorstr('------load Teacher------')}")  # report
+    check_suffix(teach_weights, '.pt')
+    teach_use_weights = teach_weights.endswith('.pt')
     if teach_use_weights:
         with torch_distributed_zero_first(LOCAL_RANK):
             teach_weights = attempt_download(teach_weights)  # download if not found locally
         teach_ckpt = torch.load(teach_weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
         teach_model = Model(teach_ckpt['model'].yaml, ch=3, nc=nc, distill=True, inject_layer=inject_layers).to(device)  # create
+        tea_inject_chs = teach_model.inject_layer_ch
         teach_csd = teach_ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
         teach_csd = intersect_dicts(teach_csd, teach_model.state_dict())  # intersect
         teach_model.load_state_dict(teach_csd, strict=False)  # load
@@ -188,6 +166,39 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         LOGGER.error(f"{colorstr('teacher not found ')} ")  # report
         raise FileNotFoundError("Teacher's weights not found. Please provide a weight file path to --teach-weights. "
                                 "i.e.'--teach-weigths path/to/teach.pt'")
+    LOGGER.info(f"{colorstr('-------------------------')}")  # report
+
+    # --------student-------
+    check_suffix(weights, '.pt')  # check weights
+    pretrained = weights.endswith('.pt')
+    LOGGER.info(f"{colorstr('------load Student-------')}")  # report
+    if pretrained:
+        with torch_distributed_zero_first(LOCAL_RANK):
+            weights = attempt_download(weights)  # download if not found locally
+        ckpt = torch.load(weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
+        model = Model(cfg or ckpt['model'].yaml, ch=3,
+                      nc=nc,
+                      distill=True,
+                      inject_layer=inject_layers,
+                      tea_inject_layers_ch=tea_inject_chs).to(
+            device)  # create
+        csd = ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
+        csd = intersect_dicts(csd, model.state_dict())  # intersect
+        model.load_state_dict(csd, strict=False)  # load
+        LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')  # report
+    else:
+        model = Model(cfg, ch=3,
+                      nc=nc,
+                      scale=model_scale,
+                      distill=True,
+                      inject_layer=inject_layers,
+                      tea_inject_layers_ch=tea_inject_chs).to(device)
+        LOGGER.info(f"{colorstr('scale: ')}{model_scale} ")  # report
+    # stu_amp check
+    stu_amp = False
+    if use_amp:
+        stu_amp = check_amp(model)
+
     LOGGER.info(f"{colorstr('-------------------------')}")  # report
 
     # only check model details
@@ -330,8 +341,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # init loss class
     # compute_loss = NNDetectionLoss(model)
-    compute_loss = NNDetectionLossDistillFeatureBased(stu_model=model,
-                                                      teach_model=teach_model)
+    compute_loss = NNDetectionLossDistillFeatureEmbed(model=model)
     # compute_loss = NNDetectionLoss(model, use_qfl=True)  # use qfl for cls_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True)  # use fel for bbox_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True, use_qfl=True)  # use fel and qfl
@@ -409,15 +419,13 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
             # Forward
             with torch.cuda.amp.autocast(amp):
-                pred, st_feature = model(imgs)  # forward
                 with torch.no_grad():
                     _, tea_feature = teach_model(imgs)
+                pred, distill_loss = model(imgs, tea_feature=tea_feature)  # forward
 
-                loss, loss_items = compute_loss(stu_feature=st_feature,
-                                                teach_feature=tea_feature,
-                                                pred=pred,
+                loss, loss_items = compute_loss(pred=pred,
                                                 targets=targets.to(device),
-                                                distill_gain=momentum_distill_gain)  # loss scaled by batch_size
+                                                distill_loss=momentum_distill_gain * distill_loss)  # loss scaled by batch_size
 
 
                 if RANK != -1:
