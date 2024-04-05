@@ -233,7 +233,7 @@ def run(
         if compute_loss:
             loss += compute_loss(pred=train_out,
                                  targets=targets,
-                                 distill_loss=distill_gain * distill_loss)[1]
+                                 distill_loss=distill_loss * distill_gain)[1]
 
         # NMS
         targets[:, 2:] *= torch.tensor((width, height, width, height), device=device)  # to pixels

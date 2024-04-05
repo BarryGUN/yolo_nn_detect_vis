@@ -344,6 +344,7 @@ class NNDetectionLossDistillFeatureBased:
 
         return loss.sum() * batch_size, loss.detach()  # loss(box, cls, dfl, distill)
 
+
 class NNDetectionLossDistillFeatureEmbed:
     # Compute losses
     def __init__(self,
@@ -451,14 +452,12 @@ class NNDetectionLossDistillFeatureEmbed:
 
         return loss, batch_size
 
-
     def __call__(self,
                  pred=None,
                  targets=None,
                  distill_loss=0):
         loss = torch.zeros(4, device=self.device)  # box, cls, dfl
         loss_stu, batch_size = self.__get_detect_loss__(pred, targets)
-
 
         loss[3] = distill_loss
 

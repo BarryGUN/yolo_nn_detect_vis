@@ -422,10 +422,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 with torch.no_grad():
                     _, tea_feature = teach_model(imgs)
                 pred, distill_loss = model(imgs, tea_feature=tea_feature)  # forward
-
                 loss, loss_items = compute_loss(pred=pred,
                                                 targets=targets.to(device),
-                                                distill_loss=momentum_distill_gain * distill_loss)  # loss scaled by batch_size
+                                                distill_loss=distill_loss*momentum_distill_gain)  # loss scaled by batch_size
 
 
                 if RANK != -1:
@@ -484,7 +483,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                 plots=False,
                                                 callbacks=callbacks,
                                                 compute_loss=compute_loss,
-                                                inject_layer=inject_layers)
+                                                inject_layer=inject_layers,
+                                                distill_gain=momentum_distill_gain)
 
             # Update best mAP
             fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
