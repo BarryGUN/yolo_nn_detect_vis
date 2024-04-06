@@ -40,8 +40,7 @@ from utils.general import (LOGGER, TQDM_BAR_FORMAT, check_amp, check_dataset, ch
                            yaml_save)
 from utils.loggers import LoggersDistill
 from utils.loggers.comet.comet_utils import check_comet_resume
-from utils.detect.loss_tal import NNDetectionLoss, NNDetectionLossDistillFeatureBased, \
-    NNDetectionLossDistillFeatureEmbed
+from utils.detect.loss_tal import  NNDetectionLossDistillFeature
 from utils.metrics import fitness
 from utils.plots import plot_evolve
 from utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, select_device, smart_DDP, smart_optimizer,
@@ -341,7 +340,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # init loss class
     # compute_loss = NNDetectionLoss(model)
-    compute_loss = NNDetectionLossDistillFeatureEmbed(model=model)
+    compute_loss = NNDetectionLossDistillFeature(model=model)
     # compute_loss = NNDetectionLoss(model, use_qfl=True)  # use qfl for cls_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True)  # use fel for bbox_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True, use_qfl=True)  # use fel and qfl
