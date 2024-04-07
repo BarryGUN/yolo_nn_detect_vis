@@ -72,7 +72,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     model_scale, \
     teach_weights, \
     distill_stop_epochs, \
-    inject_layers \
+    inject_layers, \
+    no_distill_gain_decay \
         = \
         Path(opt.save_dir), \
         opt.epochs, \
@@ -93,7 +94,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.model_scale, \
         opt.teach_weights, \
         opt.distill_stop_epochs, \
-        opt.inject_layers
+        opt.inject_layers, \
+        opt.no_distill_gain_decay
 
     callbacks.run('on_pretrain_routine_start')
 
@@ -350,15 +352,20 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # distillation init
     init_distill_gain = hyp['distill']
-
     if distill_stop_epochs == 0:
-        LOGGER.info(f'{colorstr("Distillation: ")}Distillation Weight Decay off')
-    elif epochs != distill_stop_epochs != -1:
-        LOGGER.info(f'{colorstr("Distillation: ")}Distillation Weight Decay for {distill_stop_epochs} epochs')
+        raise ArithmeticError('Stop epochs cannot set 0')
+    if epochs != distill_stop_epochs != -1:
+        LOGGER.info(f'{colorstr("Distillation: ")}Distillation for {distill_stop_epochs} epochs')
     else:
         distill_stop_epochs = epochs
-        LOGGER.info(f'{colorstr("Distillation: ")}Distillation with Decay Throughout the Entire Process ')
+        LOGGER.info(f'{colorstr("Distillation: ")}Distillation throughout the entire process ')
 
+    if no_distill_gain_decay:
+        LOGGER.info(f'{colorstr("Distillation: ")}Distillation decay off ')
+        momentum_distill_gain = init_distill_gain
+    else:
+        LOGGER.info(f'{colorstr("Distillation: ")}Distillation decay with cosine annealing ')
+        momentum_distill_gain = init_distill_gain
     if distill_stop_epochs > epochs:
         raise ArithmeticError('Stop epochs cannot larger than total epochs')
 
@@ -367,9 +374,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         model.train()
         teach_model.eval()  # only use teacher model to predict
 
-        if distill_stop_epochs == 0:
-            momentum_distill_gain = init_distill_gain
-        else:
+        if not no_distill_gain_decay:
             momentum_distill_gain = cosine_annealing_gain_decay(init_distill_gain, epochs=distill_stop_epochs,
                                                                 epoch=epoch + 1)
         # Update image weights (optional, single-GPU only)
@@ -568,12 +573,14 @@ def parse_opt(known=False):
     parser.add_argument('--cfg', type=str, default='yolov8m-base.yaml', help='teach_model.yaml path')
     parser.add_argument('--model-scale', type=str, default='n', help='model size')
     parser.add_argument('--distill-stop-epochs', type=int, default=250,
-                        help='epoch stop distill, set -1 means never stop distill')
+                        help='epoch stop distillation, set -1 means never stop distill')
+    parser.add_argument('--no-distill-gain-decay',  action='store_true',
+                        help='turn off distillation gain decay, ')
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch.yaml', help='hyper parameters path')
     parser.add_argument('--epochs', type=int, default=600, help='total training epochs')
     parser.add_argument('--low-gpu-mem', action='store_true',
-                        help='clean gpu cache every epoch, fit to low mem gpu, but will reduce the training speed')
+                        help='clean gpu cache every epoch, fit to low mem gpu, but will slow the training speed')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
     parser.add_argument('--resume', nargs='?', const=True, default=False, help='resume most recent training')
