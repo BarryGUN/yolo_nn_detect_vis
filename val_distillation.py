@@ -223,10 +223,16 @@ def run(
             # preds, train_out = model(im) if compute_loss else (model(im, augment=augment), None)
 
             feature_tea = None
+            distill_loss = 0
+            train_out = None
+            preds = None
             if tea_model is not None:
                 final_out_tea, feature_tea = tea_model(im) if compute_loss else (tea_model(im, augment=augment), None)
-            final_out, distill_loss = model(im, tea_feature=feature_tea) if compute_loss else (model(im, augment=augment), None)
-            preds, train_out = final_out
+            if model.distill:
+                final_out, distill_loss = model(im, tea_feature=feature_tea) if compute_loss else (model(im, augment=augment), None)
+                preds, train_out = final_out
+            else:
+                preds, train_out = model(im, tea_feature=feature_tea) if compute_loss else (model(im, augment=augment), None)
 
 
         # Loss

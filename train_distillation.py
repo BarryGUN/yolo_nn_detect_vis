@@ -40,7 +40,7 @@ from utils.general import (LOGGER, TQDM_BAR_FORMAT, check_amp, check_dataset, ch
                            yaml_save)
 from utils.loggers import LoggersDistill
 from utils.loggers.comet.comet_utils import check_comet_resume
-from utils.detect.loss_tal import  NNDetectionLossDistillFeature
+from utils.detect.loss_tal import NNDetectionLossDistillFeature
 from utils.metrics import fitness
 from utils.plots import plot_evolve
 from utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, select_device, smart_DDP, smart_optimizer,
@@ -150,7 +150,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         with torch_distributed_zero_first(LOCAL_RANK):
             teach_weights = attempt_download(teach_weights)  # download if not found locally
         teach_ckpt = torch.load(teach_weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
-        teach_model = Model(teach_ckpt['model'].yaml, ch=3, nc=nc, distill=True, inject_layer=inject_layers).to(device)  # create
+        teach_model = Model(teach_ckpt['model'].yaml, ch=3, nc=nc, distill=True, inject_layer=inject_layers).to(
+            device)  # create
         tea_inject_chs = teach_model.inject_layer_ch
         teach_csd = teach_ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
         teach_csd = intersect_dicts(teach_csd, teach_model.state_dict())  # intersect
@@ -207,13 +208,13 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # amp check
     if not use_amp:
         amp = False
-        LOGGER.info(f"{colorstr('AMP:')}AMP off")
+        LOGGER.info(f"{colorstr('AMP: ')}AMP off")
     else:
         amp = stu_amp and teach_amp
         if amp:
-            LOGGER.info(f"{colorstr('AMP:')}check passed")
+            LOGGER.info(f"{colorstr('AMP: ')}All checks passed")
         else:
-            LOGGER.info(f"{colorstr('AMP:')}check failed")
+            LOGGER.info(f"{colorstr('AMP: ')}checks failed")
 
     # Freeze
     freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # layers to freeze
@@ -339,11 +340,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     stopper, stop = EarlyStopping(patience=opt.patience), False
 
     # init loss class
-    # compute_loss = NNDetectionLoss(model)
     compute_loss = NNDetectionLossDistillFeature(model=model)
-    # compute_loss = NNDetectionLoss(model, use_qfl=True)  # use qfl for cls_loss
-    # compute_loss = NNDetectionLoss(model, use_fel=True)  # use fel for bbox_loss
-    # compute_loss = NNDetectionLoss(model, use_fel=True, use_qfl=True)  # use fel and qfl
 
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
@@ -353,11 +350,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # distillation init
     init_distill_gain = hyp['distill']
-    if epochs != distill_stop_epochs != -1:
+
+    if distill_stop_epochs == 0:
+        LOGGER.info(f'{colorstr("Distillation: ")}Distillation Weight Decay off')
+    elif epochs != distill_stop_epochs != -1:
         LOGGER.info(f'{colorstr("Distillation: ")}Distillation Weight Decay for {distill_stop_epochs} epochs')
     else:
         distill_stop_epochs = epochs
-        LOGGER.info(f'{colorstr("Distillation: ")}"Distillation with Decay Throughout the Entire Process" ')
+        LOGGER.info(f'{colorstr("Distillation: ")}Distillation with Decay Throughout the Entire Process ')
 
     if distill_stop_epochs > epochs:
         raise ArithmeticError('Stop epochs cannot larger than total epochs')
@@ -367,8 +367,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         model.train()
         teach_model.eval()  # only use teacher model to predict
 
-        momentum_distill_gain = cosine_annealing_gain_decay(init_distill_gain, epochs=distill_stop_epochs,
-                                                            epoch=epoch + 1)
+        if distill_stop_epochs == 0:
+            momentum_distill_gain = init_distill_gain
+        else:
+            momentum_distill_gain = cosine_annealing_gain_decay(init_distill_gain, epochs=distill_stop_epochs,
+                                                                epoch=epoch + 1)
         # Update image weights (optional, single-GPU only)
         if opt.image_weights:
             cw = model.class_weights.cpu().numpy() * (1 - maps) ** 2 / nc  # class weights
@@ -423,8 +426,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 pred, distill_loss = model(imgs, tea_feature=tea_feature)  # forward
                 loss, loss_items = compute_loss(pred=pred,
                                                 targets=targets.to(device),
-                                                distill_loss=distill_loss*momentum_distill_gain)  # loss scaled by batch_size
-
+                                                distill_loss=distill_loss * momentum_distill_gain)  # loss scaled by batch_size
 
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
