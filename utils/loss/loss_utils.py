@@ -120,6 +120,7 @@ class CWDLoss(nn.Module):
 
 # class MutualInformationLoss
 class HelLingerLoss(nn.Module):
+
     """PyTorch version of `Channel-wise Distillation for Semantic Segmentation.
     <https://arxiv.org/abs/2011.13256>`_.
     """
