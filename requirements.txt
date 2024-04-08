@@ -1,4 +1,4 @@
-# YOLOv5 🚀 requirements
+# YOLONN requirements
 # Usage: pip install -r requirements.txt
 
 # Base ------------------------------------------------------------------------
