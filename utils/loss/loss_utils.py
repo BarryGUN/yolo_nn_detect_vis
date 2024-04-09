@@ -184,11 +184,10 @@ class MimicLoss(nn.Module):
 
 
 class SCWDLoss(nn.Module):
-    def __init__(self, tau=1.0, gain_c=0.75, gain_s=0.25):
+    def __init__(self, tau=1.0):
         super(SCWDLoss, self).__init__()
         self.tau = tau
-        self.gain_c = gain_c
-        self.gain_s = gain_s
+
 
     def forward(self, y_s, y_t):
         """Forward computation.
@@ -213,21 +212,20 @@ class SCWDLoss(nn.Module):
             softmax_pred_T = F.softmax(t / self.tau,
                                        dim=1)  # [N*C, H*W]
 
-            logsoftmax = torch.nn.LogSoftmax(dim=1)
-            cost = self.gain_c * torch.sum(
-                softmax_pred_T * logsoftmax(t / self.tau) -
-                softmax_pred_T * logsoftmax(s / self.tau)) * (
-                           self.tau ** 2)
             # spatial wise
-            softmax_pred_T = F.softmax(t / self.tau,
+            softmax_pred_T_gain = F.softmax(t / self.tau,
                                        dim=0)  # [N*C, H*W]
+            softmax_pred_S_gain = F.softmax(s / self.tau,
+                                         dim=0)
 
-            logsoftmax = torch.nn.LogSoftmax(dim=0)
-            cost += self.gain_s * torch.sum(
-                softmax_pred_T * logsoftmax(t / self.tau) -
-                softmax_pred_T * logsoftmax(s / self.tau)) * (
-                            self.tau ** 2)
+            logsoftmax = torch.nn.LogSoftmax(dim=1)
 
-            losses.append(cost / (C * N))
+            cost = torch.sum(
+                softmax_pred_T * logsoftmax(t * softmax_pred_T_gain / self.tau) -
+                 softmax_pred_T * logsoftmax(s * softmax_pred_S_gain / self.tau) ) * (
+                           self.tau ** 2)
+
+            losses.append(cost/(C*N))
 
         return sum(losses)
+

@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from models.conv import Conv
 from models.distill_blocks import TranROI
 from utils.general import xywh2xyxy
 from utils.loss.loss_utils import smooth_BCE, QFocalLoss, CWDLoss, HelLingerLoss, MimicLoss, SCWDLoss

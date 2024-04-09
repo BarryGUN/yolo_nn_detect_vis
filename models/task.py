@@ -159,6 +159,8 @@ class DetectionModel(BaseModel):
             # OURS
             # self.distill_loss = FeatureLossNN(channels_s=self.inject_layer_ch, channels_t=tea_inject_layers_ch)
 
+
+
         # Build strides, anchors
         m = self.model[-1]  # Detect()
 
