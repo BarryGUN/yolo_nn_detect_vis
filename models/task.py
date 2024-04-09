@@ -19,7 +19,7 @@ from models.head import NNDetect
 from models.net import C2f, C2ELAN, LightC2ELAN
 from models.net_spp import SPPF, \
     SPPCSPC, SPP
-from utils.detect.loss_tal import FeatureLoss
+from utils.detect.loss_tal import FeatureLoss, FeatureLossNN
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLONN root directory
@@ -154,7 +154,10 @@ class DetectionModel(BaseModel):
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         self.inplace = self.yaml.get('inplace', True)
         if tea_inject_layers_ch is not None:
+            # DAMO-YOLO-AMD
             self.distill_loss = FeatureLoss(channels_s=self.inject_layer_ch, channels_t=tea_inject_layers_ch)
+            # OURS
+            # self.distill_loss = FeatureLossNN(channels_s=self.inject_layer_ch, channels_t=tea_inject_layers_ch)
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()

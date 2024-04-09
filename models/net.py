@@ -37,3 +37,4 @@ class LightC2ELAN(C2f):
     def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
         super().__init__(c1, c2, n=n, shortcut=shortcut, g=g, e=e)
         self.m = nn.ModuleList(LightC2(self.c, self.c, shortcut=shortcut, g=g, e=1.0) for _ in range(n))
+

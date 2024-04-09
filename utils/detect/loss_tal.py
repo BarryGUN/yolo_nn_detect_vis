@@ -8,8 +8,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from models.distill_blocks import TranROI
 from utils.general import xywh2xyxy
-from utils.loss.loss_utils import smooth_BCE, QFocalLoss, CWDLoss, HelLingerLoss
+from utils.loss.loss_utils import smooth_BCE, QFocalLoss, CWDLoss, HelLingerLoss, MimicLoss
 from utils.metrics import bbox_iou
 from utils.detect.assigner.tal.anchor_generator import dist2bbox, make_anchors, bbox2dist
 from utils.detect.assigner.tal.assigner import TaskAlignedAssigner
@@ -65,6 +66,7 @@ class BboxLoss(nn.Module):
                 F.cross_entropy(pred_dist, tr.view(-1), reduction='none').view(tl.shape) * wr).mean(-1, keepdim=True)
 
 
+# Damo-YOLO
 class FeatureLoss(nn.Module):
     def __init__(self,
                  channels_s,
@@ -83,7 +85,8 @@ class FeatureLoss(nn.Module):
         ]
 
         # self.feature_loss = CWDLoss()
-        self.feature_loss = HelLingerLoss()
+        self.feature_loss = MimicLoss()
+        # self.feature_loss = HelLingerLoss()
 
     def forward(self, y_s, y_t):
         assert len(y_s) == len(y_t)
@@ -94,6 +97,82 @@ class FeatureLoss(nn.Module):
             s = self.align_module[idx](s)
             s = self.norm[idx](s)
             t = self.norm[idx](t)
+            tea_feats.append(t)
+            stu_feats.append(s)
+
+        return self.feature_loss(stu_feats, tea_feats)
+
+
+# AMD
+class FeatureLossAMD(nn.Module):
+    def __init__(self,
+                 channels_s,
+                 channels_t):
+        super(FeatureLossAMD, self).__init__()
+
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.align_module = nn.ModuleList([
+            nn.Conv2d(stu_channel, tea_channel, kernel_size=1, stride=1,
+                      padding=0).to(device)
+            for stu_channel, tea_channel in zip(channels_s, channels_t)
+        ])
+        self.norm = [
+            nn.BatchNorm2d(tea_channel, affine=False).to(device)
+            for tea_channel in channels_t
+        ]
+
+        self.feature_loss = CWDLoss()
+        # self.feature_loss = HelLingerLoss()
+
+    def forward(self, y_s, y_t):
+        assert len(y_s) == len(y_t)
+        tea_feats = []
+        stu_feats = []
+
+        for idx, (s, t) in enumerate(zip(y_s, y_t)):
+            s = self.align_module[idx](s)
+            s = self.norm[idx](s)
+            t = self.norm[idx](t)
+            tea_feats.append(t)
+            stu_feats.append(s)
+
+        return self.feature_loss(stu_feats, tea_feats)
+
+
+# Ours
+class FeatureLossNN(nn.Module):
+    def __init__(self,
+                 channels_s,
+                 channels_t):
+        super(FeatureLossNN, self).__init__()
+
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.align_module = nn.ModuleList([
+            nn.Conv2d(stu_channel, tea_channel, kernel_size=1, stride=1,
+                      padding=0).to(device)
+            for stu_channel, tea_channel in zip(channels_s, channels_t)
+        ])
+        self.tran_roi = nn.ModuleList([
+            TranROI(dim=tea_channel)
+            for tea_channel in channels_t
+        ])
+        self.norm = [
+            nn.BatchNorm2d(tea_channel, affine=False).to(device)
+            for tea_channel in channels_t
+        ]
+
+        self.feature_loss = CWDLoss()
+
+    def forward(self, y_s, y_t):
+        assert len(y_s) == len(y_t)
+        tea_feats = []
+        stu_feats = []
+
+        for idx, (s, t) in enumerate(zip(y_s, y_t)):
+            s = self.align_module[idx](s)
+            s = self.norm[idx](s)
+            t = self.norm[idx](t)
+            s = self.tran_roi[idx](tea=t, stu=s)
             tea_feats.append(t)
             stu_feats.append(s)
 

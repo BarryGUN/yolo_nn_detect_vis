@@ -77,11 +77,11 @@ class VariFocalLoss(nn.Module):
         return loss
 
 
-
 class CWDLoss(nn.Module):
     """PyTorch version of `Channel-wise Distillation for Semantic Segmentation.
     <https://arxiv.org/abs/2011.13256>`_.
     """
+
     def __init__(self, tau=1.0):
         super(CWDLoss, self).__init__()
         self.tau = tau
@@ -110,7 +110,7 @@ class CWDLoss(nn.Module):
             cost = torch.sum(
                 softmax_pred_T * logsoftmax(t.view(-1, W * H) / self.tau) -
                 softmax_pred_T * logsoftmax(s.view(-1, W * H) / self.tau)) * (
-                    self.tau**2)
+                           self.tau ** 2)
 
             losses.append(cost / (C * N))
         loss = sum(losses)
@@ -120,10 +120,10 @@ class CWDLoss(nn.Module):
 
 # class MutualInformationLoss
 class HelLingerLoss(nn.Module):
-
     """PyTorch version of `Channel-wise Distillation for Semantic Segmentation.
     <https://arxiv.org/abs/2011.13256>`_.
     """
+
     def __init__(self, tau=1.0):
         super(HelLingerLoss, self).__init__()
         self.tau = tau
@@ -151,7 +151,7 @@ class HelLingerLoss(nn.Module):
                                        dim=1)
             sqrt_T = torch.sqrt(softmax_pred_T)
             sqrt_S = torch.sqrt(softmax_pred_S)
-            cost = torch.sum(torch.sqrt(torch.sum((sqrt_T - sqrt_S)**2)))
+            cost = torch.sum(torch.sqrt(torch.sum((sqrt_T - sqrt_S) ** 2)))
 
             losses.append(cost / (C * N))
         loss = sum(losses)
@@ -159,3 +159,25 @@ class HelLingerLoss(nn.Module):
         return loss
 
 
+class MimicLoss(nn.Module):
+    def __init__(self, ):
+        super(MimicLoss, self).__init__()
+        self.mse = nn.MSELoss()
+
+    def forward(self, y_s, y_t):
+        """Forward computation.
+        Args:
+            y_s (list): The student model prediction with
+                shape (N, C, H, W) in list.
+            y_t (list): The teacher model prediction with
+                shape (N, C, H, W) in list.
+        Return:
+            torch.Tensor: The calculated loss value of all stages.
+        """
+        assert len(y_s) == len(y_t)
+        losses = []
+        for idx, (s, t) in enumerate(zip(y_s, y_t)):
+            assert s.shape == t.shape
+            losses.append(self.mse(s, t))
+        loss = sum(losses)
+        return loss
