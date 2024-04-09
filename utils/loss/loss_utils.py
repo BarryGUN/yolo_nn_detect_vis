@@ -181,3 +181,53 @@ class MimicLoss(nn.Module):
             losses.append(self.mse(s, t))
         loss = sum(losses)
         return loss
+
+
+class SCWDLoss(nn.Module):
+    def __init__(self, tau=1.0, gain_c=1.0, gain_s=0.125):
+        super(SCWDLoss, self).__init__()
+        self.tau = tau
+        self.gain_c = gain_c
+        self.gain_s = gain_s
+
+    def forward(self, y_s, y_t):
+        """Forward computation.
+        Args:
+            y_s (list): The student model prediction with
+                shape (N, C, H, W) in list.
+            y_t (list): The teacher model prediction with
+                shape (N, C, H, W) in list.
+        Return:
+            torch.Tensor: The calculated loss value of all stages.
+        """
+        assert len(y_s) == len(y_t)
+        losses = []
+
+        for idx, (s, t) in enumerate(zip(y_s, y_t)):
+            assert s.shape == t.shape
+            N, C, H, W = s.shape
+            # normalize in channel diemension
+            # channel wise
+            t = t.view(-1, W * H)
+            s = s.view(-1, W * H)
+            softmax_pred_T = F.softmax(t / self.tau,
+                                       dim=1)  # [N*C, H*W]
+
+            logsoftmax = torch.nn.LogSoftmax(dim=1)
+            cost = self.gain_c * torch.sum(
+                softmax_pred_T * logsoftmax(t / self.tau) -
+                softmax_pred_T * logsoftmax(s / self.tau)) * (
+                           self.tau ** 2)
+            # spatial wise
+            softmax_pred_T = F.softmax(t / self.tau,
+                                       dim=0)  # [N*C, H*W]
+
+            logsoftmax = torch.nn.LogSoftmax(dim=0)
+            cost += self.gain_s * torch.sum(
+                softmax_pred_T * logsoftmax(t / self.tau) -
+                softmax_pred_T * logsoftmax(s / self.tau)) * (
+                            self.tau ** 2)
+
+            losses.append(cost / (C * N))
+
+        return sum(losses)

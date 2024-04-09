@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 from models.distill_blocks import TranROI
 from utils.general import xywh2xyxy
-from utils.loss.loss_utils import smooth_BCE, QFocalLoss, CWDLoss, HelLingerLoss, MimicLoss
+from utils.loss.loss_utils import smooth_BCE, QFocalLoss, CWDLoss, HelLingerLoss, MimicLoss, SCWDLoss
 from utils.metrics import bbox_iou
 from utils.detect.assigner.tal.anchor_generator import dist2bbox, make_anchors, bbox2dist
 from utils.detect.assigner.tal.assigner import TaskAlignedAssigner
@@ -85,8 +85,9 @@ class FeatureLoss(nn.Module):
         ]
 
         # self.feature_loss = CWDLoss()
-        self.feature_loss = MimicLoss()
+        # self.feature_loss = MimicLoss()
         # self.feature_loss = HelLingerLoss()
+        self.feature_loss = SCWDLoss()
 
     def forward(self, y_s, y_t):
         assert len(y_s) == len(y_t)
