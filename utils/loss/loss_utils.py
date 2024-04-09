@@ -184,7 +184,7 @@ class MimicLoss(nn.Module):
 
 
 class SCWDLoss(nn.Module):
-    def __init__(self, tau=1.0, gain_c=1.0, gain_s=0.125):
+    def __init__(self, tau=1.0, gain_c=0.75, gain_s=0.25):
         super(SCWDLoss, self).__init__()
         self.tau = tau
         self.gain_c = gain_c
