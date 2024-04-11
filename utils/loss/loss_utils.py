@@ -192,6 +192,7 @@ class SCWDLoss(nn.Module):
 
 
     """
+
     def __init__(self, tau=1.0, c_gain=1.0, pix_gain=0.125):
         super(SCWDLoss, self).__init__()
         self.tau = tau
@@ -235,6 +236,60 @@ class SCWDLoss(nn.Module):
                 softmax_pred_T * logsoftmax(t / self.tau) -
                 softmax_pred_T * logsoftmax(s / self.tau)) * (
                             self.tau ** 2)
+
+            losses.append(cost / (C * N * 2))
+
+        return sum(losses)
+
+
+class CombinedCWDLoss(nn.Module):
+    """PyTorch version of `Channel-wise Distillation for Semantic Segmentation.
+    <https://arxiv.org/abs/2011.13256>`_.
+    """
+
+    def __init__(self, tau=1.0, t_gain=1, t_b_gain=0.25):
+        super(CombinedCWDLoss, self).__init__()
+        self.tau = tau
+        self.t_gain = t_gain
+        self.t_b_gain = t_b_gain
+
+    def forward(self, y_s, y_t, y_t_blur):
+        """Forward computation.
+        Args:
+            y_s (list): The student model prediction with
+                shape (N, C, H, W) in list.
+            y_t (list): The teacher model prediction with
+                shape (N, C, H, W) in list.
+            y_t_blur (list): The blured teacher model prediction with
+            shape (N, C, H, W) in list.
+        Return:
+            torch.Tensor: The calculated loss value of all stages.
+        """
+        assert len(y_s) == len(y_t) == len(y_t_blur)
+        losses = []
+
+        for idx, (s, t, t_b) in enumerate(zip(y_s, y_t, y_t_blur)):
+            assert s.shape == t.shape == t_b.shape
+            N, C, H, W = s.shape
+            # normalize in channel diemension
+            t = t.view(-1, W * H)
+            s = s.view(-1, W * H)
+            t_b = t_b.view(-1, W * H)
+            softmax_pred_T = F.softmax(t / self.tau,
+                                       dim=1)  # [N*C, H*W]
+
+            softmax_pred_T_B = F.softmax(t_b / self.tau,
+                                         dim=1)  # [N*C, H*W]
+
+            logsoftmax = torch.nn.LogSoftmax(dim=1)
+            cost = self.t_gain * torch.sum(
+                softmax_pred_T * logsoftmax(t / self.tau) -
+                softmax_pred_T * logsoftmax(s / self.tau)) * (
+                           self.tau ** 2) + \
+                   self.t_b_gain * torch.sum(
+                softmax_pred_T_B * logsoftmax(t_b / self.tau) -
+                softmax_pred_T_B * logsoftmax(s / self.tau)) * (
+                           self.tau ** 2)
 
             losses.append(cost / (C * N * 2))
 
