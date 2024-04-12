@@ -145,8 +145,8 @@ class MimicLoss(nn.Module):
 class SCWDLoss(nn.Module):
     """
 
-    tr1: c_gain=1.0, pix_gain=0.25
-    tr2: c_gain=1.0, pix_gain=0.125
+    tr1: c_gain=1.0, pix_gain=0.25   x
+    tr2: c_gain=1.0, pix_gain=0.125  √
     tr3: c_gain=1.5, pix_gain=0.25
 
 
