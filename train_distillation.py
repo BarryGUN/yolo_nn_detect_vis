@@ -16,7 +16,6 @@ from torch.optim import lr_scheduler
 from tqdm import tqdm
 from pathlib import Path
 
-from models.common import DetectMultiBackend
 from utils.distill_utils import cosine_annealing_gain_decay
 
 FILE = Path(__file__).resolve()

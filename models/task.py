@@ -145,7 +145,6 @@ class DetectionModel(BaseModel):
                                     out_ch_index=self.inject_layer)  # model, savelist
 
             self.model, self.save, self.inject_layer_ch = model_res
-            # print(type(model_res[0]))
         else:
             self.model, self.save = parse_model(deepcopy(self.yaml),
                                                 ch=[ch],
