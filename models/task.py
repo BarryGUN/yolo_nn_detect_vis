@@ -154,9 +154,14 @@ class DetectionModel(BaseModel):
         self.inplace = self.yaml.get('inplace', True)
         if tea_inject_layers_ch is not None:
             # DAMO-YOLO-AMD
-            self.distill_loss = FeatureLoss(channels_s=self.inject_layer_ch, channels_t=tea_inject_layers_ch)
+            # CWD   second
+            # Mimc  ?
+            # SCWD  best
+            # self.distill_loss = FeatureLoss(channels_s=self.inject_layer_ch, channels_t=tea_inject_layers_ch)
             # OURS
-            # self.distill_loss = FeatureLossNN(channels_s=self.inject_layer_ch, channels_t=tea_inject_layers_ch)
+            # CombinedCWD
+            # CombinedSCWD
+            self.distill_loss = FeatureLossNN(channels_s=self.inject_layer_ch, channels_t=tea_inject_layers_ch)
 
 
 

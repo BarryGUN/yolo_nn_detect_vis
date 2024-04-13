@@ -145,14 +145,14 @@ class MimicLoss(nn.Module):
 class SCWDLoss(nn.Module):
     """
 
-    tr1: c_gain=1.0, pix_gain=0.25   x
-    tr2: c_gain=1.0, pix_gain=0.125  √
-    tr3: c_gain=1.5, pix_gain=0.25
+    tr1: c_gain=1.0, pix_gain=0.25   3
+    tr2: c_gain=1.0, pix_gain=0.125  1
+    tr3: c_gain=1.5, pix_gain=0.25   2
 
 
     """
 
-    def __init__(self, tau=1.0, c_gain=1.5, pix_gain=0.25):
+    def __init__(self, tau=1.0, c_gain=1.0, pix_gain=0.125):
         super(SCWDLoss, self).__init__()
         self.tau = tau
         self.c_gain = c_gain
@@ -203,7 +203,7 @@ class SCWDLoss(nn.Module):
 
 class CombinedCWDLoss(nn.Module):
 
-    def __init__(self, tau=1.0, t_gain=1, t_b_gain=0.25):
+    def __init__(self, tau=1.0, t_gain=1, t_b_gain=0.125):
         super(CombinedCWDLoss, self).__init__()
         self.tau = tau
         self.t_gain = t_gain
@@ -265,7 +265,7 @@ class CombinedSCWDLoss(nn.Module):
     
     """
 
-    def __init__(self, tau=1.0, t_gain=1, t_b_gain=0.25, c_gain=1, pix_gain=0.125):
+    def __init__(self, tau=1.0, t_gain=1, t_b_gain=0.125, c_gain=1, pix_gain=0.125):
         super(CombinedSCWDLoss, self).__init__()
         self.tau = tau
         self.t_gain = t_gain
