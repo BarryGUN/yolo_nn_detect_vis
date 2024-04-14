@@ -25,7 +25,7 @@ class MatROI(nn.Module):
 
     def __init__(self, dim):
         super(MatROI, self).__init__()
-        self.a = DWConv(dim, dim, k=3, s=1)
+        self.a = Conv(dim, dim, k=3, s=1)
         self.v = nn.Identity()
         self.linear = Conv(dim, dim, k=1, s=1, act=False)
 
