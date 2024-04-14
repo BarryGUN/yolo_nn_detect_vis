@@ -117,8 +117,12 @@ class FeatureLossNN(nn.Module):
                       padding=0).to(device)
             for stu_channel, tea_channel in zip(channels_s, channels_t)
         ])
-        self.gauss_blurs = nn.ModuleList([
-            GaussBlur(channels=tea_channel, kernel_size=3, sigma=0.5)
+        # self.gauss_blurs = nn.ModuleList([
+        #     GaussBlur(channels=tea_channel, kernel_size=3, sigma=0.5)
+        #     for tea_channel in channels_t]
+        # )
+        self.roi = nn.ModuleList([
+            TranROI(dim=tea_channel)
             for tea_channel in channels_t]
         )
         self.norm = [
@@ -127,22 +131,25 @@ class FeatureLossNN(nn.Module):
         ]
 
         # self.feature_loss = CombinedCWDLoss()
-        self.feature_loss = CombinedSCWDLoss()
+        # self.feature_loss = CombinedSCWDLoss()
+        self.feature_loss = SCWDLoss()
 
     def forward(self, y_s, y_t):
         assert len(y_s) == len(y_t)
         tea_feats = []
         stu_feats = []
-        tea_b_feats = []
+        # tea_b_feats = []
         for idx, (s, t) in enumerate(zip(y_s, y_t)):
             s = self.align_module[idx](s)
             s = self.norm[idx](s)
             t = self.norm[idx](t)
-            tea_b_feats.append(self.gauss_blurs[idx](t))
+            s = self.roi[idx](tea=t, stu=s)
+            # tea_b_feats.append(self.gauss_blurs[idx](t))
             tea_feats.append(t)
             stu_feats.append(s)
 
-        return self.feature_loss(stu_feats, tea_feats, tea_b_feats)
+        # return self.feature_loss(stu_feats, tea_feats, tea_b_feats)
+        return self.feature_loss(stu_feats, tea_feats)
 
 
 # ------hyper loss------
