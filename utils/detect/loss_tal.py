@@ -8,10 +8,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.distill_blocks import TranROI, GaussBlur
+from models.distill_blocks import TranROI
 from utils.general import xywh2xyxy
-from utils.loss.loss_utils import smooth_BCE, QFocalLoss, CWDLoss, MimicLoss, SCWDLoss, CombinedCWDLoss, \
-    CombinedSCWDLoss
+from utils.loss.loss_utils import smooth_BCE, QFocalLoss, CWDLoss, MimicLoss, SCWDLoss
 from utils.metrics import bbox_iou
 from utils.detect.assigner.tal.anchor_generator import dist2bbox, make_anchors, bbox2dist
 from utils.detect.assigner.tal.assigner import TaskAlignedAssigner
