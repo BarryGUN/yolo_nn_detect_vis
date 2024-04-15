@@ -200,3 +200,60 @@ class SCWDLoss(nn.Module):
 
         return sum(losses)
 
+class RoiSCWDLoss(nn.Module):
+    """
+
+    tr1: c_gain=1.0, pix_gain=0.25   3
+    tr2: c_gain=1.0, pix_gain=0.125  1 √
+    tr3: c_gain=1.5, pix_gain=0.25   2
+
+
+    """
+
+    def __init__(self, tau=1.0, c_gain=1.0, pix_gain=0.125):
+        super(RoiSCWDLoss, self).__init__()
+        self.tau = tau
+        self.c_gain = c_gain
+        self.pix_gain = pix_gain
+
+    def forward(self, y_s, y_t):
+        """Forward computation.
+        Args:
+            y_s (list): The student model prediction with
+                shape (N, C, H, W) in list.
+            y_t (list): The teacher model prediction with
+                shape (N, C, H, W) in list.
+        Return:
+            torch.Tensor: The calculated loss value of all stages.
+        """
+        assert len(y_s) == len(y_t)
+        losses = []
+
+        for idx, (s, t) in enumerate(zip(y_s, y_t)):
+            assert s.shape == t.shape
+            N, C, H, W = s.shape
+            # normalize in channel diemension
+            t = t.view(-1, W * H)
+            s = s.view(-1, W * H)
+
+            # channel wise
+            softmax_pred_T = F.softmax(t / self.tau,
+                                       dim=1)  # [N*C, H*W]
+            logsoftmax = torch.nn.LogSoftmax(dim=1)
+            cost = self.c_gain * torch.sum(
+                softmax_pred_T * logsoftmax(t / self.tau) -
+                softmax_pred_T * logsoftmax(s / self.tau)) * (
+                           self.tau ** 2)
+
+            # spatial wise
+            softmax_pred_T = F.softmax(t / self.tau,
+                                       dim=0)  # [N*C, H*W]
+            logsoftmax = torch.nn.LogSoftmax(dim=0)
+            cost += self.pix_gain * torch.sum(
+                softmax_pred_T * logsoftmax(t / self.tau) -
+                softmax_pred_T * logsoftmax(s / self.tau)) * (
+                            self.tau ** 2)
+
+            losses.append(cost / N)
+
+        return sum(losses)

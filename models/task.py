@@ -19,7 +19,7 @@ from models.head import NNDetect
 from models.net import C2f, C2ELAN, LightC2ELAN
 from models.net_spp import SPPF, \
     SPPCSPC, SPP
-from utils.detect.loss_tal import FeatureLoss, FeatureLossNN
+from utils.detect.loss_tal import FeatureLoss, FeatureLossNN, FeatureLossNNx
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLONN root directory
@@ -159,9 +159,8 @@ class DetectionModel(BaseModel):
             # SCWD  best
             # self.distill_loss = FeatureLoss(channels_s=self.inject_layer_ch, channels_t=tea_inject_layers_ch)
             # OURS
-            self.distill_loss = FeatureLossNN(channels_s=self.inject_layer_ch, channels_t=tea_inject_layers_ch)
-
-
+            # self.distill_loss = FeatureLossNN(channels_s=self.inject_layer_ch, channels_t=tea_inject_layers_ch)
+            self.distill_loss = FeatureLossNNx(channels_s=self.inject_layer_ch, channels_t=tea_inject_layers_ch)
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
@@ -326,4 +325,3 @@ def parse_model(d, ch, scale, out_ch_index=None):  # model_dict, input_channels(
     else:
         return nn.Sequential(*layers), sorted(save), distill_layer_ch
     # return nn.Sequential(*layers), sorted(save)
-
