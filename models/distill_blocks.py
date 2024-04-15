@@ -4,31 +4,22 @@ import torch
 import torchvision
 from torch import nn
 import torch.nn.functional as F
+from torchvision.ops import roi_align
 
 from models.conv import DWConv, Conv
 
 
-class TranROI(nn.Module):
+class ROI(nn.Module):
 
-    def __init__(self, dim):
-        super(TranROI, self).__init__()
-        self.a = DWConv(dim, dim, k=3, s=1)
-        self.v = nn.Identity()
-        self.linear = Conv(dim, dim, k=1, s=1, act=False)
+    def __init__(self, roi_size=3):
+        super(ROI, self).__init__()
+        self.roi_size = roi_size
 
-    def forward(self, tea, stu):
-        tea_mask = self.a(tea)
-        return tea_mask * self.v(stu)
+    def forward(self, x, roi, stride):
+        return roi_align(input=x,
+                         boxes=roi,
+                         output_size=(self.roi_size, self.roi_size),
+                         spatial_scale=stride)
 
 
-class MatROI(nn.Module):
 
-    def __init__(self, dim):
-        super(MatROI, self).__init__()
-        self.a = DWConv(dim, dim, k=3, s=1)
-        self.v = nn.Identity()
-        self.linear = Conv(dim, dim, k=1, s=1, act=False)
-
-    def forward(self, tea, stu):
-        tea_mask = self.a(tea)
-        return torch.matmul(tea_mask, self.v(stu))

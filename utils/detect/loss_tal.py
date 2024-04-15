@@ -1,14 +1,15 @@
 """
 Loss functions
 """
-
+import math
 import os
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.distill_blocks import TranROI
+from models.conv import Conv
+from models.distill_blocks import ROI
 from utils.general import xywh2xyxy
 from utils.loss.loss_utils import smooth_BCE, QFocalLoss, CWDLoss, MimicLoss, SCWDLoss
 from utils.metrics import bbox_iou
@@ -107,43 +108,56 @@ class FeatureLoss(nn.Module):
 class FeatureLossNN(nn.Module):
     def __init__(self,
                  channels_s,
-                 channels_t):
+                 channels_t,
+                 roi_size=(7, 5, 3)):
         super(FeatureLossNN, self).__init__()
 
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.align_module = nn.ModuleList([
-            nn.Conv2d(stu_channel, tea_channel, kernel_size=1, stride=1,
-                      padding=0).to(device)
+            Conv(stu_channel, tea_channel, k=1, s=1).to(self.device)
             for stu_channel, tea_channel in zip(channels_s, channels_t)
         ])
-        # self.gauss_blurs = nn.ModuleList([
-        #     GaussBlur(channels=tea_channel, kernel_size=3, sigma=0.5)
-        #     for tea_channel in channels_t]
-        # )
-        self.roi = nn.ModuleList([
-            TranROI(dim=tea_channel)
-            for tea_channel in channels_t]
-        )
-        self.norm = [
-            nn.BatchNorm2d(tea_channel, affine=False).to(device)
-            for tea_channel in channels_t
-        ]
 
-        # self.feature_loss = CombinedCWDLoss()
-        # self.feature_loss = CombinedSCWDLoss()
+        self.roi_align = nn.ModuleList([
+            nn.Conv2d(tea_channel, 4, 1, stride=4)
+            for tea_channel in channels_t
+        ])
+
+        self.stu_roi = nn.ModuleList([
+            ROI(roi_size=size)
+            for size, tea_channel in zip(roi_size, channels_t)]
+        )
+
+        self.tea_roi = nn.ModuleList([
+            ROI(roi_size=size)
+            for size, tea_channel in zip(roi_size, channels_t)]
+        )
+
         self.feature_loss = SCWDLoss()
 
     def forward(self, y_s, y_t):
         assert len(y_s) == len(y_t)
         tea_feats = []
         stu_feats = []
-        # tea_b_feats = []
         for idx, (s, t) in enumerate(zip(y_s, y_t)):
+            # align
             s = self.align_module[idx](s)
-            s = self.norm[idx](s)
-            t = self.norm[idx](t)
-            s = self.roi[idx](tea=t, stu=s)
-            # tea_b_feats.append(self.gauss_blurs[idx](t))
+            t_roi_align = self.roi_align[idx](t)
+
+            # get roi box
+            N, C, W, H = t_roi_align.shape
+            t_roi_align = t_roi_align.permute(0, 2, 3, 1).contiguous().view(N, -1, C)  # (N, H*W ,4)
+            t_roi_align = xywh2xyxy(t_roi_align)
+            t_roi_align = [t_roi_align[i] for i in range(N)]
+
+            # get roi features
+            t = self.tea_roi[idx](x=t,
+                                  roi=t_roi_align,
+                                  stride=1.0)
+            s = self.stu_roi[idx](x=s,
+                                  roi=t_roi_align,
+                                  stride=1.0)
+
             tea_feats.append(t)
             stu_feats.append(s)
 
@@ -228,7 +242,7 @@ class NNDetectionLoss:
         # pboxes
         pred_bboxes = self.bbox_decode(anchor_points, pred_distri)  # xyxy, (b, h*w, 4)
 
-        # 正样本匹配TAA
+        # TAA
         target_labels, target_bboxes, target_scores, fg_mask = self.assigner(
             pred_scores.detach().sigmoid(),
             (pred_bboxes.detach() * stride_tensor).type(gt_bboxes.dtype),
