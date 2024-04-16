@@ -1,20 +1,17 @@
 """
 Loss functions
 """
-import math
 import os
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.conv import Conv
-from models.distill_blocks import ROI
 from utils.general import xywh2xyxy
-from utils.loss.loss_utils import smooth_BCE, QFocalLoss, CWDLoss, MimicLoss, SCWDLoss, RoiSCWDLoss
-from utils.metrics import bbox_iou
+from utils.loss.loss_utils import smooth_BCE, QFocalLoss, CWDLoss, MimicLoss, SCWDLoss
 from utils.detect.assigner.tal.anchor_generator import dist2bbox, make_anchors, bbox2dist
 from utils.detect.assigner.tal.assigner import TaskAlignedAssigner
+from utils.metrics import bbox_iou
 from utils.torch_utils import de_parallel
 
 
@@ -98,161 +95,6 @@ class FeatureLoss(nn.Module):
             s = self.align_module[idx](s)
             s = self.norm[idx](s)
             t = self.norm[idx](t)
-            tea_feats.append(t)
-            stu_feats.append(s)
-
-        return self.feature_loss(stu_feats, tea_feats)
-
-
-# Ours
-class FeatureLossNN(nn.Module):
-    def __init__(self,
-                 channels_s,
-                 channels_t,
-                 roi_size=(7, 5, 3)):
-        super(FeatureLossNN, self).__init__()
-
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.align_module = nn.ModuleList([
-            Conv(stu_channel, tea_channel, k=1, s=1).to(self.device)
-            for stu_channel, tea_channel in zip(channels_s, channels_t)
-        ])
-
-        self.roi_align = nn.ModuleList([
-            nn.Conv2d(tea_channel, 4, 1, stride=4)
-            for tea_channel in channels_t
-        ])
-
-        self.stu_roi = nn.ModuleList([
-            ROI(roi_size=size)
-            for size, tea_channel in zip(roi_size, channels_t)]
-        )
-
-        self.tea_roi = nn.ModuleList([
-            ROI(roi_size=size)
-            for size, tea_channel in zip(roi_size, channels_t)]
-        )
-
-        self.feature_loss = SCWDLoss()
-
-    def forward(self, y_s, y_t):
-        assert len(y_s) == len(y_t)
-        tea_feats = []
-        stu_feats = []
-        for idx, (s, t) in enumerate(zip(y_s, y_t)):
-            # align
-            s = self.align_module[idx](s)
-            t_roi_align = self.roi_align[idx](t)
-
-            # get roi box
-            N, C, W, H = t_roi_align.shape
-            t_roi_align = t_roi_align.permute(0, 2, 3, 1).contiguous().view(N, -1, C)  # (N, H*W ,4)
-            t_roi_align = xywh2xyxy(t_roi_align)
-            t_roi_align = [t_roi_align[i] for i in range(N)]
-
-            # get roi features
-            t = self.tea_roi[idx](x=t,
-                                  roi=t_roi_align,
-                                  stride=1.0)
-            s = self.stu_roi[idx](x=s,
-                                  roi=t_roi_align,
-                                  stride=1.0)
-
-            tea_feats.append(t)
-            stu_feats.append(s)
-
-        # return self.feature_loss(stu_feats, tea_feats, tea_b_feats)
-        return self.feature_loss(stu_feats, tea_feats)
-
-
-class FeatureLossNNx(nn.Module):
-    def __init__(self,
-                 channels_s,
-                 channels_t,
-                 roi_size=(7, 5, 3),
-                 topk=8):
-        super(FeatureLossNNx, self).__init__()
-
-        self.topk = topk
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.align_module = nn.ModuleList([
-            Conv(stu_channel, tea_channel, k=1, s=1).to(self.device)
-            for stu_channel, tea_channel in zip(channels_s, channels_t)
-        ])
-
-        self.roi_align_tea = nn.ModuleList([
-            nn.Conv2d(tea_channel, 4, 1, stride=4)
-            for tea_channel in channels_t
-        ])
-
-        self.roi_align_stu = nn.ModuleList([
-            nn.Conv2d(tea_channel, 4, 1, stride=4)
-            for tea_channel in channels_t
-        ])
-
-        self.stu_roi = nn.ModuleList([
-            ROI(roi_size=size)
-            for size, tea_channel in zip(roi_size, channels_t)]
-        )
-
-        self.tea_roi = nn.ModuleList([
-            ROI(roi_size=size)
-            for size, tea_channel in zip(roi_size, channels_t)]
-        )
-
-        self.feature_loss = RoiSCWDLoss()
-
-    def roi_bbox_score(self, bbox1, bbox2):
-        return bbox_iou(bbox1,
-                        bbox2,
-                        xywh=True,
-                        DIoU=True)
-
-    def select_topk(self, roi_1, roi_2):
-        assert roi_1.shape == roi_2.shape
-        _, topk_idxs = torch.topk(self.roi_bbox_score(roi_1, roi_2),
-                                  self.topk,
-                                  dim=0,
-                                  largest=True)
-        topk_idxs = topk_idxs.squeeze()
-        return torch.index_select(input=roi_1, dim=0, index=topk_idxs), \
-               torch.index_select(input=roi_2, dim=0, index=topk_idxs)
-
-    def forward(self, y_s, y_t):
-        assert len(y_s) == len(y_t)
-        tea_feats = []
-        stu_feats = []
-        for idx, (s, t) in enumerate(zip(y_s, y_t)):
-            # align
-            s = self.align_module[idx](s)
-            t_roi_align = self.roi_align_tea[idx](t)
-            s_roi_align = self.roi_align_stu[idx](t)
-
-            # get roi box
-            assert t_roi_align.shape == s_roi_align.shape
-            # teacher
-            N, C, W, H = t_roi_align.shape
-            t_roi_align = t_roi_align.permute(0, 2, 3, 1).contiguous().view(N, -1, C)  # (N, H*W ,4)
-            t_roi_align = xywh2xyxy(t_roi_align)
-            # stu
-            s_roi_align = s_roi_align.permute(0, 2, 3, 1).contiguous().view(N, -1, C)  # (N, H*W ,4)
-            s_roi_align = xywh2xyxy(s_roi_align)
-            # select top roi
-            top_s_roi = []
-            top_t_roi = []
-            for i in range(N):  # batch
-                rois = self.select_topk(s_roi_align[i], t_roi_align[i])
-                top_s_roi.append(rois[0])
-                top_t_roi.append(rois[1])
-
-            # get roi features
-            t = self.tea_roi[idx](x=t,
-                                  roi=top_t_roi,
-                                  stride=1.0)
-            s = self.stu_roi[idx](x=s,
-                                  roi=top_s_roi,
-                                  stride=1.0)
-
             tea_feats.append(t)
             stu_feats.append(s)
 
