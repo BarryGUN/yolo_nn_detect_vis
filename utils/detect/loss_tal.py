@@ -83,8 +83,8 @@ class FeatureLoss(nn.Module):
         ]
 
         # self.feature_loss = CWDLoss()
-        # self.feature_loss = MimicLoss()
-        self.feature_loss = SCWDLoss()
+        self.feature_loss = MimicLoss()
+        # self.feature_loss = SCWDLoss()
 
     def forward(self, y_s, y_t):
         assert len(y_s) == len(y_t)
