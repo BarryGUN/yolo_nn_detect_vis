@@ -155,7 +155,7 @@ class DetectionModel(BaseModel):
         if tea_inject_layers_ch is not None:
             # DAMO-YOLO-AMD
             # CWD   second
-            # Mimc  ?
+            # Mimc  third
             # SCWD  best
             self.distill_loss = FeatureLoss(channels_s=self.inject_layer_ch, channels_t=tea_inject_layers_ch)
 
