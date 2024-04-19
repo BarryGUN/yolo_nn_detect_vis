@@ -12,6 +12,8 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
+from torch import tensor
+
 from models.blocks import RepBlock, QARepBlock, Bottleneck, \
     RepVGGBlock, QARepVGGBlock, CBFuse, CBLinear, ReConvFuse
 from models.conv import DWConv, GhostConv, DeformConv2d, ConvTranspose, DWConvTranspose2d

@@ -31,12 +31,12 @@ class COCOValidator:
     def save(self, stats, folder, name):
 
         indexes = [
-            ('AP', 'area=all', 'IoU=50:95'), ('AP', 'area=all', 'IoU=50'),
-            ('AP', 'area=all', 'IoU=75'), ('AP', 'area=small', 'IoU=50:95'),
-            ('AP', 'area=medium', 'IoU=50:95'), ('AP', 'area=large', 'IoU=50:95'),
-            ('AR', 'area=all', 'IoU=50:95'), ('AR', 'area=all', 'IoU=50'),
-            ('AR', 'area=all', 'IoU=75'), ('AR', 'area=small', 'IoU=50:95'),
-            ('AR', 'area=medium', 'IoU=50:95'), ('AR', 'area=large', 'IoU=50:95'),
+            ('AP', 'area=all', 'IoU=50:95', 'maxDets=100'), ('AP', 'area=all', 'IoU=50','maxDets=100'),
+            ('AP', 'area=all', 'IoU=75', 'maxDets=100'), ('AP', 'area=small', 'IoU=50:95', 'maxDets=100'),
+            ('AP', 'area=medium', 'IoU=50:95', 'maxDets=100'), ('AP', 'area=large', 'IoU=50:95', 'maxDets=100'),
+            ('AR', 'area=all', 'IoU=50:95', 'maxDets=1'), ('AR', 'area=all', 'IoU=50:95', 'maxDets=10'),
+            ('AR', 'area=all', 'IoU=50:95', 'maxDets=100'), ('AR', 'area=small', 'IoU=50:95', 'maxDets=100'),
+            ('AR', 'area=medium', 'IoU=50:95', 'maxDets=100'), ('AR', 'area=large', 'IoU=50:95', 'maxDets=100'),
         ]
 
         values = [

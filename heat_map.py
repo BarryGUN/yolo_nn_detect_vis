@@ -196,7 +196,7 @@ class yolonn_heatmap:
 
 def get_params():
     params = {
-        'weight': 'weights/ce.pt',
+        'weight': 'weights/yolonn-vis-n-org.pt',
         'cfg': 'cfg/yolonn-vis.yaml',
         'device': 'cuda:0',
         'method': 'XGradCAM',  # GradCAMPlusPlus, GradCAM, XGradCAM
@@ -212,4 +212,4 @@ def get_params():
 
 if __name__ == '__main__':
     model = yolonn_heatmap(**get_params())
-    model(r'demo/05.jpg', 'demo/result/vis/small')
+    model(r'demo/09.jpg', 'demo/result/RPAN/small')

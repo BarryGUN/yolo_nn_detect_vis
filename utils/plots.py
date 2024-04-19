@@ -189,7 +189,7 @@ def feature_visualization(x, module_type, stage, n=32, save_dir=Path('runs/detec
     n:              Maximum number of feature maps to plot
     save_dir:       Directory to save results
     """
-    if 'Detect' not in module_type:
+    if not any(invalid in module_type for invalid in ('Detect', 'CBLinear')):
         batch, channels, height, width = x.shape  # batch, channels, height, width
         if height > 1 and width > 1:
             f = save_dir / f"stage{stage}_{module_type.split('.')[-1]}_features.png"  # filename
