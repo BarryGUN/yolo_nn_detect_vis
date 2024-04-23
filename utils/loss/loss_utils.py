@@ -201,8 +201,10 @@ class SCWDLoss(nn.Module):
                     softmax_pred_T * logsoftmax(t / self.tau) -
                     softmax_pred_T * logsoftmax(s / self.tau)) * (
                                 self.tau ** 2)
-
-            losses.append(cost / (C * N * 2))
+            if self.pix_gain == 0 or self.pix_gain == 0:
+                losses.append(cost / (C * N))
+            else:
+                losses.append(cost / (C * N * 2))
 
         return sum(losses)
 
