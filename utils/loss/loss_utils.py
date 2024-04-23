@@ -149,11 +149,14 @@ class SCWDLoss(nn.Module):
     tr2: c_gain=1.0, pix_gain=0.125  1 √
     tr3: c_gain=1.5, pix_gain=0.25   2
 
-
+    m->s
+    tr1: c_gain=1.0, pix_gain=0.025   2
+    tr2: c_gain=1.0, pix_gain=0.125  1 √
+    tr3: c_gain=1.0, pix_gain=0.0
 
     """
 
-    def __init__(self, tau=1.0, c_gain=1.0, pix_gain=0.125):
+    def __init__(self, tau=1.0, c_gain=1.0, pix_gain=0.0):
         super(SCWDLoss, self).__init__()
         self.tau = tau
         self.c_gain = c_gain
@@ -178,24 +181,26 @@ class SCWDLoss(nn.Module):
             # normalize in channel diemension
             t = t.view(-1, W * H)
             s = s.view(-1, W * H)
+            cost = 0
+            if self.c_gain != 0:
+                # channel wise
+                softmax_pred_T = F.softmax(t / self.tau,
+                                           dim=1)  # [N*C, H*W]
+                logsoftmax = torch.nn.LogSoftmax(dim=1)
+                cost = self.c_gain * torch.sum(
+                    softmax_pred_T * logsoftmax(t / self.tau) -
+                    softmax_pred_T * logsoftmax(s / self.tau)) * (
+                               self.tau ** 2)
 
-            # channel wise
-            softmax_pred_T = F.softmax(t / self.tau,
-                                       dim=1)  # [N*C, H*W]
-            logsoftmax = torch.nn.LogSoftmax(dim=1)
-            cost = self.c_gain * torch.sum(
-                softmax_pred_T * logsoftmax(t / self.tau) -
-                softmax_pred_T * logsoftmax(s / self.tau)) * (
-                           self.tau ** 2)
-
-            # spatial wise
-            softmax_pred_T = F.softmax(t / self.tau,
-                                       dim=0)  # [N*C, H*W]
-            logsoftmax = torch.nn.LogSoftmax(dim=0)
-            cost += self.pix_gain * torch.sum(
-                softmax_pred_T * logsoftmax(t / self.tau) -
-                softmax_pred_T * logsoftmax(s / self.tau)) * (
-                            self.tau ** 2)
+            if self.pix_gain != 0:
+                # spatial wise
+                softmax_pred_T = F.softmax(t / self.tau,
+                                           dim=0)  # [N*C, H*W]
+                logsoftmax = torch.nn.LogSoftmax(dim=0)
+                cost += self.pix_gain * torch.sum(
+                    softmax_pred_T * logsoftmax(t / self.tau) -
+                    softmax_pred_T * logsoftmax(s / self.tau)) * (
+                                self.tau ** 2)
 
             losses.append(cost / (C * N * 2))
 
