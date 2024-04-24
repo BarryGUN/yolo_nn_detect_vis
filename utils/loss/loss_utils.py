@@ -156,7 +156,7 @@ class SCWDLoss(nn.Module):
 
     """
 
-    def __init__(self, tau=1.0, c_gain=1.0, pix_gain=0.0):
+    def __init__(self, tau=1.0, c_gain=1.0, pix_gain=0.125):
         super(SCWDLoss, self).__init__()
         self.tau = tau
         self.c_gain = c_gain
