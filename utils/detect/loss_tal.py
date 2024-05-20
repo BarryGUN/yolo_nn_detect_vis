@@ -37,6 +37,7 @@ class BboxLoss(nn.Module):
         if self.use_fel:
             eiou, iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, FocalEIoU=True)
             loss_iou = ((1.0 - eiou) * bbox_weight).sum() / target_scores_sum
+            iou = (iou * bbox_weight).sum() / target_scores_sum
             loss_iou *= iou
         else:
             iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
@@ -132,7 +133,7 @@ class NNDetectionLoss:
                                             num_classes=self.nc,
                                             alpha=float(os.getenv('YOLOA', 0.5)),
                                             beta=float(os.getenv('YOLOB', 6.0)))
-        self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=use_dfl).to(device)
+        self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=use_dfl, use_fel=use_fel).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
         self.use_dfl = use_dfl
 
@@ -216,7 +217,8 @@ class NNDetectionLossDistillFeature:
     def __init__(self,
                  model,
                  use_dfl=True,
-                 use_qfl=False):
+                 use_qfl=False,
+                 use_fel=False):
         device = next(model.parameters()).device  # get model device
         # h = model.hyp  # hyperparameters
 
@@ -245,7 +247,7 @@ class NNDetectionLossDistillFeature:
                                             num_classes=self.nc,
                                             alpha=float(os.getenv('YOLOA', 0.5)),
                                             beta=float(os.getenv('YOLOB', 6.0)))
-        self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=use_dfl).to(device)
+        self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=use_dfl, use_fel=use_fel).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
         self.use_dfl = use_dfl
 
