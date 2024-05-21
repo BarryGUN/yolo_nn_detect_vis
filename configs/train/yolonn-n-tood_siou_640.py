@@ -9,6 +9,7 @@ config = {
     'name': 'yolonn-vis-org-tood_ciou_640',
     'model-scale': 'n',
     'iou': 'SIoU',
+    'detector': 'TOOD',
     'optimizer': 'SGD',
     'epochs': 600,
     'cos-lr': True,

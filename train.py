@@ -283,7 +283,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # compute_loss = NNDetectionLoss(model, use_fel=True)  # use fel for bbox_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True, use_qfl=True)  # use fel and qfl
 
-    LOGGER.info(f"{colorstr('IoU:')}{iou}")
+    LOGGER.info(f"{colorstr('IoU: ')}{iou}\n"
+                f"{colorstr('detector: ')}{detector}\n")
+
 
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'

@@ -67,5 +67,5 @@ def command_generater(exc_file, config_file, save=False):
 
 if __name__ == '__main__':
     command_generater(exc_file='train.py',
-                      config_file='configs/train/yolonn-n-tood_ciou_640.py',
+                      config_file='configs/train/yolonn-n-expfree_ciou_640-custom.py',
                       save=True)

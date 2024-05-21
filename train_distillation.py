@@ -346,8 +346,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # init loss class
     compute_loss = NNDetectionLossDistillFeature(model=model,
-                                                 iou=iou)
-    LOGGER.info(f"{colorstr('IoU:')}{iou}")
+                                                 iou=iou,
+                                                 detector=detector)
+    LOGGER.info(f"{colorstr('IoU: ')}{iou}\n"
+                f"{colorstr('detector: ')}{detector}\n")
 
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
