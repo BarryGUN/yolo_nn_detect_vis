@@ -113,7 +113,7 @@ def is_writeable(dir, test=False):
         return False
 
 
-LOGGING_NAME = "yolov5"
+LOGGING_NAME = "yoloNN"
 
 
 def set_logging(name=LOGGING_NAME, verbose=True):
@@ -145,7 +145,7 @@ if platform.system() == 'Windows':
         setattr(LOGGER, fn.__name__, lambda x: fn(emojis(x)))  # emoji safe logging
 
 
-def user_config_dir(dir='Ultralytics', env_var='YOLOV5_CONFIG_DIR'):
+def user_config_dir(dir='A', env_var='YOLONN'):
     # Return path of user configuration directory. Prefer environment variable if exists. Make dir if required.
     env = os.getenv(env_var)
     if env:

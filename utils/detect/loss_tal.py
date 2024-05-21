@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from utils.general import xywh2xyxy
 from utils.loss.loss_utils import smooth_BCE, QFocalLoss, CWDLoss, MimicLoss, SCWDLoss
 from utils.detect.assigner.tal.anchor_generator import dist2bbox, make_anchors, bbox2dist
-from utils.detect.assigner.tal.assigner import TaskAlignedAssigner
+from utils.detect.assigner.tal.assigner import TaskAlignedAssigner, ExpFreeTaskAlignedAssigner
 from utils.metrics import bbox_iou
 from utils.torch_utils import de_parallel
 
@@ -36,14 +36,6 @@ class BboxLoss(nn.Module):
         # new
         bbox_weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
 
-        # if self.use_fel:
-        #     eiou, iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, FocalEIoU=True)
-        #     loss_iou = ((1.0 - eiou) * bbox_weight).sum() / target_scores_sum
-        #     iou = (iou * bbox_weight).sum() / target_scores_sum
-        #     loss_iou *= iou
-        # else:
-        #     iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
-        #     loss_iou = ((1.0 - iou) * bbox_weight).sum() / target_scores_sum
         iou_param_dict = {
             'box1': pred_bboxes[fg_mask],
             'box2': target_bboxes[fg_mask],
@@ -117,7 +109,7 @@ class FeatureLoss(nn.Module):
 # ------hyper loss------
 class NNDetectionLoss:
     # Compute losses
-    def __init__(self, model, use_dfl=True, iou='CIoU'):
+    def __init__(self, model, use_dfl=True, iou='CIoU', detector='TOOD'):
         device = next(model.parameters()).device  # get model device
         # h = model.hyp  # hyperparameters
 
@@ -125,14 +117,10 @@ class NNDetectionLoss:
         # self.cp, self.cn = smooth_BCE(eps=h.get("label_smoothing", 0.0))  # positive, negative BCE targets
 
         m = de_parallel(model).model[-1]  # Detect() module
-        # self.balance = {3: [4.0, 1.0, 0.4]}.get(m.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
 
         # Define criteria
         self.hyp = model.hyp
-        # if use_qfl:
-        #     self.cls_loss = QFocalLoss(gamma=self.hyp['qfl_gamma'],
-        #         )
-        # else:
+
         self.cls_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
@@ -140,10 +128,19 @@ class NNDetectionLoss:
         self.device = device
 
         # Task-Aligned Assigner
-        self.assigner = TaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
-                                            num_classes=self.nc,
-                                            alpha=float(os.getenv('YOLOA', 0.5)),
-                                            beta=float(os.getenv('YOLOB', 6.0)))
+        assert detector in ('TOOD', 'ExpFree')
+        if detector == 'TOOD':
+            self.assigner = TaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
+                                                num_classes=self.nc,
+                                                alpha=float(os.getenv('YOLOA', 0.5)),
+                                                beta=float(os.getenv('YOLOB', 6.0)))
+        elif detector == 'ExpFree':
+            self.assigner = ExpFreeTaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
+                                                num_classes=self.nc,
+                                                alpha=float(os.getenv('YOLOA', 0.5)),
+                                                beta=float(os.getenv('YOLOB', 6.0)))
+        else:
+            raise NotImplementedError('Unknown detector ')
         self.bbox_loss = BboxLoss(m.reg_max - 1,
                                   use_dfl=use_dfl,
                                   iou=iou).to(device)
@@ -203,16 +200,8 @@ class NNDetectionLoss:
 
         target_scores_sum = max(target_scores.sum(), 1)
 
-        # cls loss
-        # loss[1] = self.varifocal_loss(pred_scores, target_scores, target_labels) / target_scores_sum  # VFL way
-        # print(f'pred{pred_scores.shape}')
-        # print(f'target_score{target_scores.shape}')
-        # print(f'target_labels{target_scores}')
-        # if isinstance(self.cls_loss, QFocalLoss):
-        #      loss[1] = self.cls_loss(pred_scores, score=target_scores.to(dtype), label=target_labels.to(dtype)).sum() / target_scores_sum  # BCE
-        # else:
         loss[1] = self.cls_loss(pred_scores, target_scores.to(dtype),
-                                   ).sum() / target_scores_sum  # BCE
+                                ).sum() / target_scores_sum  # BCE
 
         # bbox loss
         if fg_mask.sum():
@@ -237,35 +226,39 @@ class NNDetectionLossDistillFeature:
     def __init__(self,
                  model,
                  use_dfl=True,
-                 iou='CIoU'):
+                 iou='CIoU',
+                 detector='TOOD'
+                 ):
         device = next(model.parameters()).device  # get model device
         # h = model.hyp  # hyperparameters
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
-        # self.cp, self.cn = smooth_BCE(eps=h.get("label_smoothing", 0.0))  # positive, negative BCE targets
 
         m = de_parallel(model).model[-1]  # Detect() module
-        # self.balance = {3: [4.0, 1.0, 0.4]}.get(m.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
 
         # Define criteria
         self.hyp = model.hyp
-        # if use_qfl:
-        #     self.cls_loss = QFocalLoss(loss_fcn=nn.BCEWithLogitsLoss(reduction='none'),
-        #                                gamma=self.hyp['qfl_gamma'],
-        #                                alpha=self.hyp['qfl_alpha'])
-        # else:
         self.cls_loss = nn.BCEWithLogitsLoss(reduction='none')
-        # self.distill = DistillLoss()
+
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
         self.device = device
 
         # Task-Aligned Assigner
-        self.assigner = TaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
-                                            num_classes=self.nc,
-                                            alpha=float(os.getenv('YOLOA', 0.5)),
-                                            beta=float(os.getenv('YOLOB', 6.0)))
+        assert detector in ('TOOD', 'ExpFree')
+        if detector == 'TOOD':
+            self.assigner = TaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
+                                                num_classes=self.nc,
+                                                alpha=float(os.getenv('YOLOA', 0.5)),
+                                                beta=float(os.getenv('YOLOB', 6.0)))
+        elif detector == 'ExpFree':
+            self.assigner = ExpFreeTaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
+                                                       num_classes=self.nc,
+                                                       alpha=float(os.getenv('YOLOA', 0.5)),
+                                                       beta=float(os.getenv('YOLOB', 6.0)))
+        else:
+            raise NotImplementedError('Unknown detector ')
         self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=use_dfl, iou=iou).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
         self.use_dfl = use_dfl

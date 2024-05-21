@@ -48,6 +48,7 @@ LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable
 RANK = int(os.getenv('RANK', -1))
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 GIT_INFO = None  # check_git_info()
+os.environ['PYTHONUNBUFFERED'] = '1'
 
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
@@ -68,7 +69,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     info_only, \
     low_gpu_mem, \
     model_scale,\
-    iou = \
+    iou, \
+    detector = \
         Path(opt.save_dir), \
         opt.epochs, \
         opt.batch_size, \
@@ -87,6 +89,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.low_gpu_mem, \
         opt.model_scale, \
         opt.iou, \
+        opt.detector
 
     callbacks.run('on_pretrain_routine_start')
 
@@ -275,7 +278,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     stopper, stop = EarlyStopping(patience=opt.patience), False
 
     # init loss class
-    compute_loss = NNDetectionLoss(model, iou=iou)
+    compute_loss = NNDetectionLoss(model, iou=iou, detector=detector)
     # compute_loss = NNDetectionLoss(model, use_qfl=True)  # use qfl for cls_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True)  # use fel for bbox_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True, use_qfl=True)  # use fel and qfl
@@ -509,7 +512,10 @@ def parse_opt(known=False):
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
     parser.add_argument('--min-items', type=int, default=0, help='Experimental')
-    parser.add_argument('--iou', type=str, default='CIoU', help='select iou loss for train')
+    parser.add_argument('--iou', type=str, default='CIoU', choices=['CIoU', 'EIoU', 'DIoU', 'IoU','SIoU'],
+                        help='select iou loss for train, i.e. CIoU EIoU DIoU IoU or SIoU')
+    parser.add_argument('--detector', type=str, default='TOOD' ,choices=['TOOD', 'ExpFree'],
+                        help='select detector for train,  i.e. TOOD or ExpFree')
 
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')

@@ -73,7 +73,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     distill_stop_epochs, \
     inject_layers, \
     no_distill_gain_decay, \
-    iou = \
+    iou, \
+    detector = \
         Path(opt.save_dir), \
         opt.epochs, \
         opt.batch_size, \
@@ -96,6 +97,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.inject_layers, \
         opt.no_distill_gain_decay, \
         opt.iou, \
+        opt.detector
 
 
     callbacks.run('on_pretrain_routine_start')
@@ -614,7 +616,10 @@ def parse_opt(known=False):
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
     parser.add_argument('--min-items', type=int, default=0, help='Experimental')
-    parser.add_argument('--iou', type=str, default='CIoU', help='select iou loss for train')
+    parser.add_argument('--iou', type=str, default='CIoU', choices=['CIoU', 'EIoU', 'DIoU', 'IoU', 'SIoU'],
+                        help='select iou loss for train, i.e. CIoU EIoU DIoU IoU or SIoU')
+    parser.add_argument('--detector', type=str, default='TOOD', choices=['TOOD', 'ExpFree'],
+                        help='select detector for train,  i.e. TOOD or ExpFree')
 
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')
