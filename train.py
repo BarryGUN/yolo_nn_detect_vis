@@ -68,8 +68,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     info_only, \
     low_gpu_mem, \
     model_scale,\
-    eiou, \
-    qfl = \
+    iou = \
         Path(opt.save_dir), \
         opt.epochs, \
         opt.batch_size, \
@@ -87,8 +86,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.info_only, \
         opt.low_gpu_mem, \
         opt.model_scale, \
-        opt.eiou, \
-        opt.qfl
+        opt.iou, \
+
     callbacks.run('on_pretrain_routine_start')
 
     # Directories
@@ -276,15 +275,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     stopper, stop = EarlyStopping(patience=opt.patience), False
 
     # init loss class
-    compute_loss = NNDetectionLoss(model,
-                                   use_qfl=qfl,
-                                   use_fel=eiou)
+    compute_loss = NNDetectionLoss(model, iou=iou)
     # compute_loss = NNDetectionLoss(model, use_qfl=True)  # use qfl for cls_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True)  # use fel for bbox_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True, use_qfl=True)  # use fel and qfl
 
-    LOGGER.info(f"{colorstr('QualityFocalLoss:')}{qfl}\n"
-                f"{colorstr('Focal-EIoULoss:')}{eiou}\n")
+    LOGGER.info(f"{colorstr('IoU:')}{iou}")
 
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
@@ -513,8 +509,7 @@ def parse_opt(known=False):
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
     parser.add_argument('--min-items', type=int, default=0, help='Experimental')
-    parser.add_argument('--eiou', action='store_true', default=False, help='use eiou loss for bbox train')
-    parser.add_argument('--qfl', action='store_true', default=False, help='use qfl for bbox train')
+    parser.add_argument('--iou', type=str, default='CIoU', help='select iou loss for train')
 
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')

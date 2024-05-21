@@ -226,7 +226,8 @@ def bbox_iou(box1, box2, xywh=True,
              GIoU=False,
              DIoU=False,
              CIoU=False,
-             FocalEIoU=False,
+             EIoU=False,
+             SIoU=False,
              eps=1e-7):
     # Returns Intersection over Union (IoU) of box1(1,4) to box2(n,4)
 
@@ -253,12 +254,12 @@ def bbox_iou(box1, box2, xywh=True,
 
     # IoU
     iou = inter / union
-    if CIoU or DIoU or GIoU or FocalEIoU:
+    if CIoU or DIoU or GIoU or EIoU:
         # cw = torch.max(b1_x2, b2_x2) - torch.min(b1_x1, b2_x1)  # convex (smallest enclosing box) width
         # ch = torch.max(b1_y2, b2_y2) - torch.min(b1_y1, b2_y1)  # convex height
         cw = b1_x2.maximum(b2_x2) - b1_x1.minimum(b2_x1)  # convex (smallest enclosing box) width
         ch = b1_y2.maximum(b2_y2) - b1_y1.minimum(b2_y1)  # convex height
-        if CIoU or DIoU or FocalEIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
+        if CIoU or DIoU or EIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
             c2 = cw ** 2 + ch ** 2 + eps  # convex diagonal squared
             rho2 = ((b2_x1 + b2_x2 - b1_x1 - b1_x2) ** 2 + (b2_y1 + b2_y2 - b1_y1 - b1_y2) ** 2) / 4  # center dist ** 2
             if CIoU:  # https://github.com/Zzh-tju/DIoU-SSD-pytorch/blob/master/utils/box/box_utils.py#L47
@@ -268,13 +269,30 @@ def bbox_iou(box1, box2, xywh=True,
                     alpha = v / (v - iou + (1 + eps))
                 return iou - (rho2 / c2 + v * alpha)  # CIoU
 
-            if FocalEIoU:
+            if EIoU:
                 rho_w2 = ((b2_x2 - b2_x1) - (b1_x2 - b1_x1)) ** 2
                 rho_h2 = ((b2_y2 - b2_y1) - (b1_y2 - b1_y1)) ** 2
                 cw2 = cw ** 2 + eps
                 ch2 = ch ** 2 + eps
-                return iou - (rho2 / c2 + rho_w2 / cw2 + rho_h2 / ch2), iou ** 0.5
+                return iou - (rho2 / c2 + rho_w2 / cw2 + rho_h2 / ch2)
 
+            if SIoU:
+                s_cw = (b2_x1 + b2_x2 - b1_x1 - b1_x2) * 0.5 + eps
+                s_ch = (b2_y1 + b2_y2 - b1_y1 - b1_y2) * 0.5 + eps
+                sigma = torch.pow(s_cw ** 2 + s_ch ** 2, 0.5)
+                sin_alpha_1 = torch.abs(s_cw) / sigma
+                sin_alpha_2 = torch.abs(s_ch) / sigma
+                threshold = pow(2, 0.5) / 2
+                sin_alpha = torch.where(sin_alpha_1 > threshold, sin_alpha_2, sin_alpha_1)
+                angle_cost = torch.cos(torch.arcsin(sin_alpha) * 2 - math.pi / 2)
+                rho_x = (s_cw / cw) ** 2
+                rho_y = (s_ch / ch) ** 2
+                gamma = angle_cost - 2
+                distance_cost = 2 - torch.exp(gamma * rho_x) - torch.exp(gamma * rho_y)
+                omiga_w = torch.abs(w1 - w2) / torch.max(w1, w2)
+                omiga_h = torch.abs(h1 - h2) / torch.max(h1, h2)
+                shape_cost = torch.pow(1 - torch.exp(-1 * omiga_w), 4) + torch.pow(1 - torch.exp(-1 * omiga_h), 4)
+                return iou - 0.5 * (distance_cost + shape_cost)
 
             return iou - rho2 / c2  # DIoU
         c_area = cw * ch + eps  # convex area

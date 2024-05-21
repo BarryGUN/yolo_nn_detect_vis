@@ -17,11 +17,13 @@ from utils.torch_utils import de_parallel
 
 # ------sub loss------
 class BboxLoss(nn.Module):
-    def __init__(self, reg_max, use_dfl=False, use_fel=False):
+    def __init__(self, reg_max, use_dfl=False, iou='CIoU'):
         super().__init__()
         self.reg_max = reg_max
         self.use_dfl = use_dfl
-        self.use_fel = use_fel
+        self.iou = iou
+        assert iou in ('CIoU', 'DIoU', 'GIoU', 'EIoU', 'SIoU')
+        # self.use_fel = use_fel
 
     def forward(self, pred_dist,
                 pred_bboxes,
@@ -34,14 +36,24 @@ class BboxLoss(nn.Module):
         # new
         bbox_weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
 
-        if self.use_fel:
-            eiou, iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, FocalEIoU=True)
-            loss_iou = ((1.0 - eiou) * bbox_weight).sum() / target_scores_sum
-            iou = (iou * bbox_weight).sum() / target_scores_sum
-            loss_iou *= iou
-        else:
-            iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
-            loss_iou = ((1.0 - iou) * bbox_weight).sum() / target_scores_sum
+        # if self.use_fel:
+        #     eiou, iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, FocalEIoU=True)
+        #     loss_iou = ((1.0 - eiou) * bbox_weight).sum() / target_scores_sum
+        #     iou = (iou * bbox_weight).sum() / target_scores_sum
+        #     loss_iou *= iou
+        # else:
+        #     iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
+        #     loss_iou = ((1.0 - iou) * bbox_weight).sum() / target_scores_sum
+        iou_param_dict = {
+            'box1': pred_bboxes[fg_mask],
+            'box2': target_bboxes[fg_mask],
+            'xywh': False,
+            self.iou: True
+
+        }
+
+        iou = eval('bbox_iou(**iou_param_dict)')
+        loss_iou = ((1.0 - iou) * bbox_weight).sum() / target_scores_sum
 
         # dfl loss
         if self.use_dfl:
@@ -105,7 +117,7 @@ class FeatureLoss(nn.Module):
 # ------hyper loss------
 class NNDetectionLoss:
     # Compute losses
-    def __init__(self, model, use_dfl=True, use_qfl=False, use_fel=False):
+    def __init__(self, model, use_dfl=True, iou='CIoU'):
         device = next(model.parameters()).device  # get model device
         # h = model.hyp  # hyperparameters
 
@@ -117,12 +129,11 @@ class NNDetectionLoss:
 
         # Define criteria
         self.hyp = model.hyp
-        if use_qfl:
-            self.cls_loss = QFocalLoss(loss_fcn=nn.BCEWithLogitsLoss(reduction='none'),
-                                       gamma=self.hyp['qfl_gamma'],
-                                       alpha=self.hyp['qfl_alpha'])
-        else:
-            self.cls_loss = nn.BCEWithLogitsLoss(reduction='none')
+        # if use_qfl:
+        #     self.cls_loss = QFocalLoss(gamma=self.hyp['qfl_gamma'],
+        #         )
+        # else:
+        self.cls_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
@@ -133,7 +144,9 @@ class NNDetectionLoss:
                                             num_classes=self.nc,
                                             alpha=float(os.getenv('YOLOA', 0.5)),
                                             beta=float(os.getenv('YOLOB', 6.0)))
-        self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=use_dfl, use_fel=use_fel).to(device)
+        self.bbox_loss = BboxLoss(m.reg_max - 1,
+                                  use_dfl=use_dfl,
+                                  iou=iou).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
         self.use_dfl = use_dfl
 
@@ -192,7 +205,14 @@ class NNDetectionLoss:
 
         # cls loss
         # loss[1] = self.varifocal_loss(pred_scores, target_scores, target_labels) / target_scores_sum  # VFL way
-        loss[1] = self.cls_loss(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
+        # print(f'pred{pred_scores.shape}')
+        # print(f'target_score{target_scores.shape}')
+        # print(f'target_labels{target_scores}')
+        # if isinstance(self.cls_loss, QFocalLoss):
+        #      loss[1] = self.cls_loss(pred_scores, score=target_scores.to(dtype), label=target_labels.to(dtype)).sum() / target_scores_sum  # BCE
+        # else:
+        loss[1] = self.cls_loss(pred_scores, target_scores.to(dtype),
+                                   ).sum() / target_scores_sum  # BCE
 
         # bbox loss
         if fg_mask.sum():
@@ -217,8 +237,7 @@ class NNDetectionLossDistillFeature:
     def __init__(self,
                  model,
                  use_dfl=True,
-                 use_qfl=False,
-                 use_fel=False):
+                 iou='CIoU'):
         device = next(model.parameters()).device  # get model device
         # h = model.hyp  # hyperparameters
 
@@ -230,12 +249,12 @@ class NNDetectionLossDistillFeature:
 
         # Define criteria
         self.hyp = model.hyp
-        if use_qfl:
-            self.cls_loss = QFocalLoss(loss_fcn=nn.BCEWithLogitsLoss(reduction='none'),
-                                       gamma=self.hyp['qfl_gamma'],
-                                       alpha=self.hyp['qfl_alpha'])
-        else:
-            self.cls_loss = nn.BCEWithLogitsLoss(reduction='none')
+        # if use_qfl:
+        #     self.cls_loss = QFocalLoss(loss_fcn=nn.BCEWithLogitsLoss(reduction='none'),
+        #                                gamma=self.hyp['qfl_gamma'],
+        #                                alpha=self.hyp['qfl_alpha'])
+        # else:
+        self.cls_loss = nn.BCEWithLogitsLoss(reduction='none')
         # self.distill = DistillLoss()
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
@@ -247,7 +266,7 @@ class NNDetectionLossDistillFeature:
                                             num_classes=self.nc,
                                             alpha=float(os.getenv('YOLOA', 0.5)),
                                             beta=float(os.getenv('YOLOB', 6.0)))
-        self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=use_dfl, use_fel=use_fel).to(device)
+        self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=use_dfl, iou=iou).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
         self.use_dfl = use_dfl
 

@@ -73,8 +73,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     distill_stop_epochs, \
     inject_layers, \
     no_distill_gain_decay, \
-    eiou, \
-    qfl = \
+    iou = \
         Path(opt.save_dir), \
         opt.epochs, \
         opt.batch_size, \
@@ -96,8 +95,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.distill_stop_epochs, \
         opt.inject_layers, \
         opt.no_distill_gain_decay, \
-        opt.eiou, \
-        opt.qfl
+        opt.iou, \
+
 
     callbacks.run('on_pretrain_routine_start')
 
@@ -345,10 +344,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # init loss class
     compute_loss = NNDetectionLossDistillFeature(model=model,
-                                                 use_qfl=qfl,
-                                                 use_fel=eiou)
-    LOGGER.info(f"{colorstr('QualityFocalLoss:')}{qfl}\n"
-                f"{colorstr('Focal-EIoULoss:')}{eiou}\n")
+                                                 iou=iou)
+    LOGGER.info(f"{colorstr('IoU:')}{iou}")
 
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
@@ -617,8 +614,7 @@ def parse_opt(known=False):
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
     parser.add_argument('--min-items', type=int, default=0, help='Experimental')
-    parser.add_argument('--eiou', action='store_true', default=False, help='use eiou loss for bbox train')
-    parser.add_argument('--qfl', action='store_true', default=False, help='use qfl for bbox train')
+    parser.add_argument('--iou', type=str, default='CIoU', help='select iou loss for train')
 
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')

@@ -40,28 +40,54 @@ class FocalLoss(nn.Module):
 
 class QFocalLoss(nn.Module):
     # Wraps Quality focal loss around existing loss_fcn(), i.e. criteria = FocalLoss(nn.BCEWithLogitsLoss(), gamma=1.5)
-    def __init__(self, loss_fcn, gamma=1.5, alpha=0.25):
+    # def __init__(self, sigmoid=True, gamma=1.5, alpha=0.25):
+    def __init__(self, gamma=1.5):
         super().__init__()
-        self.loss_fcn = loss_fcn  # must be nn.BCEWithLogitsLoss()
+        self.loss_fcn =  F.binary_cross_entropy_with_logits
         self.gamma = gamma
-        self.alpha = alpha
-        self.reduction = loss_fcn.reduction
-        self.loss_fcn.reduction = 'none'  # required to apply FL to each element
+        # self.alpha = alpha
 
-    def forward(self, pred, true):
-        loss = self.loss_fcn(pred, true)
+        # self.reduction = loss_fcn.reduction
+        # self.loss_fcn.reduction = 'none'  # required to apply FL to each element
 
-        pred_prob = torch.sigmoid(pred)  # prob from logits
-        alpha_factor = true * self.alpha + (1 - true) * (1 - self.alpha)
-        modulating_factor = torch.abs(true - pred_prob) ** self.gamma
-        loss *= alpha_factor * modulating_factor
+    def forward(self, pred, label, score):
+        # loss = self.loss_fcn(pred, true, reduction='none')
 
-        if self.reduction == 'mean':
-            return loss.mean()
-        elif self.reduction == 'sum':
-            return loss.sum()
-        else:  # 'none'
-            return loss
+        score, _ = torch.max(score, dim=-1)
+        pred_prob = torch.sigmoid(pred)
+        scale_factor = pred_prob
+        zerolabel = scale_factor.new_zeros(pred.shape)
+        loss = self.loss_fcn(pred, zerolabel,reduction='none') * scale_factor.pow(self.gamma)
+        bg_class_ind = pred.size(-1)
+        # pos = ((label >= 0) &
+        #        (label < bg_class_ind)).nonzero(as_tuple=False).squeeze(1)
+        # pos_label = label[pos].long()
+        # positives are supervised by bbox quality (IoU) score
+        # scale_factor = score[pos] - pred_prob[pos, pos_label]
+        # for b in range(pred.size(0)):  # Loop over batch dimension
+        for b, (pred_prob_elem, pred_elem, score_elem) in enumerate(zip(pred_prob, pred, score)):
+            # Get the positions of the valid labels (labels that are >= 0 and < bg_class_ind)
+            pos = ((label[b] >= 0) & (label[b] < bg_class_ind)).nonzero(as_tuple=False).squeeze(1)
+            pos_label = label[b][pos].long()
+
+            # Supervise positives by bbox quality (IoU) score
+            scale_factor = score_elem[pos, pos_label] - pred_prob_elem[pos, pos_label]
+            loss[b][pos, pos_label] = self.loss_fcn(pred_elem[pos, pos_label], score_elem[pos],
+                                                    reduction='none') * scale_factor.abs().pow(self.gamma)
+        # loss[pos,
+        #      pos_label] = self.loss_fcn(pred[pos, pos_label], score[pos],
+        #                        reduction='none') * scale_factor.abs().pow(self.gamma)
+
+        # alpha_factor = true * self.alpha + (1 - true) * (1 - self.alpha)
+        # modulating_factor = torch.abs(true - pred_prob) ** self.gamma
+        # loss *= alpha_factor * modulating_factor
+
+        # if self.reduction == 'mean':
+        #     return loss.mean()
+        # elif self.reduction == 'sum':
+        #     return loss.sum()
+        # else:  # 'none'
+        return loss
 
 
 class VariFocalLoss(nn.Module):
