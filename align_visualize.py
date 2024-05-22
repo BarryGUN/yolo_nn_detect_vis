@@ -1,8 +1,9 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-# 6
-def align_new(x, y, alpha=1.0, beta=8.0):
+# 8
+# 0.095
+def align_new(x, y, alpha=1.0, beta=1.0):
     return pow(x, alpha) * (beta * y / ((beta + 1) - y))
 
 # # beta=0.095
@@ -35,15 +36,18 @@ def scatter_plot(npz, fcns, topk):
         yk = [e[2] for e in matrics[key]]
         plt.scatter(xk, yk, c='red', label=key, s=2)
         plt.legend(loc='upper left')
-        plt.title('align visual')  # 设置标题
-        plt.xlabel('bbox-score')  # 设置x轴标签
-        plt.ylabel('overlaps')  # 设置y轴标签
-        plt.show()  # 显示图形
+        plt.title('align visual')
+        plt.xlabel('bbox-score')
+        plt.ylabel('overlaps')
+        plt.show()
 
 
 
 
 if __name__ == '__main__':
+    # mean = 0
+    # std_dev = 1
+    #
     # np.savez('data.npz', xs=np.random.rand(8400), ys=np.random.rand(8400))
     fcns = [align_new, align_org]
     scatter_plot('data.npz',fcns=fcns, topk=13)

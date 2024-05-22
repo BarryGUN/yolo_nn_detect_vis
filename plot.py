@@ -6,14 +6,6 @@ import matplotlib.pyplot as plt
 from numpy import arange, exp, log, sin, cos
 
 
-def align_new(x, beta):
-    return beta * x / ((beta + 1) - x)
-
-
-def align_org(x, beta):
-    return pow(x, beta)
-
-
 def cosannle(epoch, epochs):
     return ((1 - cos(epoch * math.pi / epochs)) / 2) * (0.1 - 1) + 1
 
@@ -24,12 +16,10 @@ def plot(plt, x, y, label):
 
 
 def plot2d(plt):
-    x = arange(0, 1, 0.01)
+    x = arange(1, 100, 1)
     plt.figure()
 
-    plt = plot(plt, x, align_new(x, beta=0.095), label='new_align')
-    plt = plot(plt, x, align_org(x, beta=6), label='org_align')
-    # plt = plot(plt, x, cosannle(x, epochs=100), label='log2')
+    plt = plot(plt, x, cosannle(x, epochs=100), label='log2')
 
     plt.legend(loc='upper left')
     plt.title('Simple Line Plot')  # 设置标题
@@ -40,4 +30,3 @@ def plot2d(plt):
 
 if __name__ == '__main__':
     plot2d(plt)
-
