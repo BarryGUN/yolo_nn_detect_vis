@@ -50,14 +50,14 @@ def dict_to_command_params(params):
 
 def command_generater(exc_file, config_file, save=False):
     param, name, project = get_variable_from_file(config_file, variable_name='config')
-    print(name)
     param = dict_to_command_params(param)
     param = ' '.join(map(str, param))
     cmd = f'python {exc_file} {param}'
     if save:
+        project = f'{project}{os.sep}cmd'
         if not os.path.exists(project):
             os.makedirs(project)
-        save_path = f'{project}{os.sep}cmd{os.sep}{name}'
+        save_path = f'{project}{os.sep}{name}'
         with open(save_path, 'w', encoding='utf-8') as f:
             f.write(cmd)
         print(f'cmd saved in {save_path}')
