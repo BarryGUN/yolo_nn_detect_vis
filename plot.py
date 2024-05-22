@@ -6,12 +6,17 @@ import matplotlib.pyplot as plt
 from numpy import arange, exp, log, sin, cos
 
 
-def align_new(epoch, epochs):
+def align_new(x, beta):
+    return beta * x / ((beta + 1) - x)
+
+
+def align_org(x, beta):
+    return pow(x, beta)
+
+
+def cosannle(epoch, epochs):
     return ((1 - cos(epoch * math.pi / epochs)) / 2) * (0.1 - 1) + 1
 
-def align_new2(epoch, epochs):
-    # return ((( 1- cos(epoch * math.pi / epochs)) / 2) * (0.1 - 1) + 1) * 0.5
-    return 0.5 * (1 - cos(epoch * math.pi / epochs) / 2)
 
 def plot(plt, x, y, label):
     plt.plot(x, y, label=label)  # 绘制折线图
@@ -19,14 +24,12 @@ def plot(plt, x, y, label):
 
 
 def plot2d(plt):
-    x = arange(1, 100, 1)
+    x = arange(0, 1, 0.01)
     plt.figure()
 
-
-
-    plt = plot(plt, x, align_new(x,epochs=100), label='log1')
-    plt = plot(plt, x, align_new2(x, epochs=100), label='log2')
-
+    plt = plot(plt, x, align_new(x, beta=0.095), label='new_align')
+    plt = plot(plt, x, align_org(x, beta=6), label='org_align')
+    # plt = plot(plt, x, cosannle(x, epochs=100), label='log2')
 
     plt.legend(loc='upper left')
     plt.title('Simple Line Plot')  # 设置标题
@@ -35,11 +38,6 @@ def plot2d(plt):
     plt.show()  # 显示图形
 
 
-
-
 if __name__ == '__main__':
     plot2d(plt)
-    # plot3d(plt)
-
-
 

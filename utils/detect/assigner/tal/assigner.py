@@ -230,7 +230,7 @@ class TaskAlignedAssigner(nn.Module):
 
 class ExpFreeTaskAlignedAssigner(nn.Module):
 
-    def __init__(self, topk=13, num_classes=80, alpha=1.0, beta=0.095, eps=1e-9):
+    def __init__(self, topk=13, num_classes=80, alpha=1.0, beta=8.0, eps=1e-9):
         super().__init__()
         self.topk = topk
         self.num_classes = num_classes
@@ -316,7 +316,7 @@ class ExpFreeTaskAlignedAssigner(nn.Module):
         # IOU
         overlaps = bbox_iou(gt_bboxes.unsqueeze(2), pd_bboxes.unsqueeze(1), xywh=False, CIoU=True).squeeze(3).clamp(0)
 
-        align_metric = (self.beta * overlaps / (1 + self.beta - overlaps)) * bbox_scores.pow(self.alpha)
+        align_metric = bbox_scores.pow(self.alpha) * (self.beta * overlaps / (1 + self.beta - overlaps))
 
         return align_metric, overlaps
 
