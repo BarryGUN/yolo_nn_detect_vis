@@ -5,7 +5,7 @@ config = {
     'amp': True,
     'batch-size': 16,
     'weights': '',
-    'project': 'run/train/n',
+    'project': 'run/train/s',
     'name': 'yolonn-vis-org-tood_ciou_640',
     'model-scale': 's',
     'iou': 'CIoU',
