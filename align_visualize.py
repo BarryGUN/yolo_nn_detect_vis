@@ -53,4 +53,4 @@ if __name__ == '__main__':
     #
     # np.savez('data.npz', xs=np.random.rand(8400), ys=np.random.rand(8400))
     fcns = [align_new, align_org]
-    scatter_plot('data.npz',fcns=fcns, topk=13)
+    scatter_plot('data.npz',fcns=fcns, topk=10)
