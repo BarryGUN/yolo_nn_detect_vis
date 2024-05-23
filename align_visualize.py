@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 # 0.05
 # 0.075
 # 2
-def align_new(x, y, alpha=0.5, beta=1.0):
+def align_new(x, y, alpha=0.5, beta=0.1):
     return pow(x, alpha) * (beta * y / ((beta + 1) - y))
 
 # # beta=0.095
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     # mean = 0
     # std_dev = 1
     #
-    # np.savez('data_2.npz', xs=np.random.rand(8400), ys=np.random.rand(8400))
+    # np.savez('data_3.npz', xs=np.random.rand(8400), ys=np.random.rand(8400))
     fcns = [align_new, align_org]
-    # # fcns = [ align_org]
-    scatter_plot('data_2.npz',fcns=fcns, topk=10)
+    # # # fcns = [ align_org]
+    scatter_plot('data_3.npz',fcns=fcns, topk=10)
