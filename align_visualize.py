@@ -7,7 +7,9 @@ from matplotlib import pyplot as plt
 # 0.075
 # 2
 def align_new(x, y, alpha=0.5, beta=0.095):
-    return pow(x, alpha) * abs((beta * y / ((beta + 1) - y)))
+    # return pow(x, alpha) * abs(beta * y / ((beta + 1) - y))
+    # return pow(x, alpha) * (beta * y / ((beta + 1) - y))
+    return pow(x, alpha) * (beta * abs(y )/ ((beta + 1) - abs(y )))
 
 # # beta=0.095
 # # beta =1
@@ -51,7 +53,7 @@ if __name__ == '__main__':
     # mean = 0
     # std_dev = 1
     #
-    # np.savez('data_3.npz', xs=np.random.rand(8400), ys=np.random.rand(8400))
+    # np.savez('data_3.npz', xs=np.random.rand(8400), ys=np.random.uniform(-1, 1, 8400))
     fcns = [align_new, align_org]
-    # # # fcns = [ align_org]
-    scatter_plot('data_2.npz',fcns=fcns, topk=10)
+    # # # # fcns = [ align_org]
+    scatter_plot('data_3.npz',fcns=fcns, topk=10)
