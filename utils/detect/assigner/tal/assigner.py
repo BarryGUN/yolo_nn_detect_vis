@@ -230,7 +230,9 @@ class TaskAlignedAssigner(nn.Module):
 
 class ExpFreeTaskAlignedAssigner(nn.Module):
 
-    def __init__(self, topk=13, num_classes=80, alpha=1.0, beta=1.0, eps=1e-9):
+    # 1.0
+    # 0.095
+    def __init__(self, topk=13, num_classes=80, alpha=1.0, beta=0.095, eps=1e-9):
         super().__init__()
         self.topk = topk
         self.num_classes = num_classes
