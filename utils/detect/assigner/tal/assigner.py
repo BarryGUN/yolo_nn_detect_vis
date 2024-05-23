@@ -319,7 +319,7 @@ class ExpFreeTaskAlignedAssigner(nn.Module):
         # IOU
         overlaps = bbox_iou(gt_bboxes.unsqueeze(2), pd_bboxes.unsqueeze(1), xywh=False, CIoU=True).squeeze(3).clamp(0)
 
-        align_metric = bbox_scores.pow(self.alpha) * (self.beta * overlaps / (1 + self.beta - overlaps))
+        align_metric = bbox_scores.pow(self.alpha) * torch.abs(self.beta * overlaps / (1 + self.beta - overlaps))
 
         return align_metric, overlaps
 

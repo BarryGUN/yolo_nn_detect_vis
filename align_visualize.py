@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 # 0.075
 # 2
 def align_new(x, y, alpha=0.5, beta=0.095):
-    return pow(x, alpha) * (beta * y / ((beta + 1) - y))
+    return pow(x, alpha) * abs((beta * y / ((beta + 1) - y)))
 
 # # beta=0.095
 # # beta =1
