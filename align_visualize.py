@@ -6,10 +6,10 @@ from matplotlib import pyplot as plt
 # 0.05
 # 0.075
 # 2
-def align_new(x, y, alpha=0.5, beta=0.095):
+def align_new(x, y, alpha=0.5, beta=0.05):
     # return pow(x, alpha) * abs(beta * y / ((beta + 1) - y))
     # return pow(x, alpha) * (beta * y / ((beta + 1) - y))
-    return pow(x, alpha) * (beta * abs(y )/ ((beta + 1) - abs(y )))
+    return pow(x, alpha) * (beta * abs(y)/ ((beta + 1) - abs(y)))
 
 # # beta=0.095
 # # beta =1
