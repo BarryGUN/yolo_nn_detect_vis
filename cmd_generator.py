@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import os.path
 import subprocess
@@ -66,6 +67,17 @@ def command_generater(exc_file, config_file, save=False):
 
 
 if __name__ == '__main__':
-    command_generater(exc_file='train.py',
-                      config_file='configs/train/yolonn-n-expfree_ciou_640-custom.py',
-                      save=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--exc_file', default='', type=str,
+                        help="Path of running file")
+    parser.add_argument('--config-file', default='', type=str,
+                        help="Path of configs")
+    parser.add_argument('--save', action='store_true',
+                        help="Save cmd")
+    args = parser.parse_args()
+
+    command_generater(exc_file=args.exc_file,
+                      config_file=args.config_file,
+                      save=args.save)
+
+
