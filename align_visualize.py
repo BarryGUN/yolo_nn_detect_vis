@@ -3,7 +3,10 @@ from matplotlib import pyplot as plt
 
 # 8
 # 0.095
-def align_new(x, y, alpha=1.0, beta=0.095):
+# 0.05
+# 0.075
+# 2
+def align_new(x, y, alpha=1.0, beta=2):
     return pow(x, alpha) * (beta * y / ((beta + 1) - y))
 
 # # beta=0.095
