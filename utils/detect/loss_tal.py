@@ -138,7 +138,7 @@ class NNDetectionLoss:
             self.assigner = ExpFreeTaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
                                                 num_classes=self.nc,
                                                 alpha=float(os.getenv('YOLOA', 0.5)),
-                                                beta=float(os.getenv('YOLOB', 6.0)))
+                                                beta=float(os.getenv('YOLOB', 1.0)))
         else:
             raise NotImplementedError('Unknown detector ')
         self.bbox_loss = BboxLoss(m.reg_max - 1,
