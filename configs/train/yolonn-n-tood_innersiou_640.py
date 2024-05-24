@@ -6,7 +6,7 @@ config = {
     'batch-size': 16,
     'weights': '',
     'project': 'run/train/n',
-    'name': 'yolonn-vis-org-tood_siou_640',
+    'name': 'yolonn-vis-org-tood_innersiou_640',
     'model-scale': 'n',
     'iou': 'SIoU',
     'inner-iou': True,
