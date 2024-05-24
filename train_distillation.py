@@ -74,7 +74,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     inject_layers, \
     no_distill_gain_decay, \
     iou, \
-    detector = \
+    detector, \
+    inner_iou = \
         Path(opt.save_dir), \
         opt.epochs, \
         opt.batch_size, \
@@ -97,8 +98,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.inject_layers, \
         opt.no_distill_gain_decay, \
         opt.iou, \
-        opt.detector
-
+        opt.detector, \
+        opt.inner_iou
 
     callbacks.run('on_pretrain_routine_start')
 
@@ -349,6 +350,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                  iou=iou,
                                                  detector=detector)
     LOGGER.info(f"{colorstr('IoU: ')}{iou}\n"
+                f"{colorstr('Inner-IoU aux: ')}{inner_iou}\n"
                 f"{colorstr('detector: ')}{detector}\n")
 
     callbacks.run('on_train_start')
@@ -581,7 +583,7 @@ def parse_opt(known=False):
     parser.add_argument('--model-scale', type=str, default='n', help='model size')
     parser.add_argument('--distill-stop-epochs', type=int, default=250,
                         help='epoch stop distillation, set -1 means never stop distill')
-    parser.add_argument('--no-distill-gain-decay',  action='store_true',
+    parser.add_argument('--no-distill-gain-decay', action='store_true',
                         help='turn off distillation gain decay, ')
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch.yaml', help='hyper parameters path')
@@ -622,7 +624,7 @@ def parse_opt(known=False):
                         help='select iou loss for train, i.e. CIoU EIoU DIoU IoU or SIoU')
     parser.add_argument('--detector', type=str, default='TOOD', choices=['TOOD', 'ExpFree'],
                         help='select detector for train,  i.e. TOOD or ExpFree')
-
+    parser.add_argument('--inner-iou', action='store_true', help='use inner IoU')
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')
     parser.add_argument('--upload_dataset', nargs='?', const=True, default=False, help='Upload data, "val" option')

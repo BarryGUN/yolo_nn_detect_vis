@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from utils.general import xywh2xyxy
-from utils.loss.loss_utils import smooth_BCE, QFocalLoss, CWDLoss, MimicLoss, SCWDLoss
+from utils.loss.loss_utils import smooth_BCE, CWDLoss, MimicLoss, SCWDLoss
 from utils.detect.assigner.tal.anchor_generator import dist2bbox, make_anchors, bbox2dist
 from utils.detect.assigner.tal.assigner import TaskAlignedAssigner, ExpFreeTaskAlignedAssigner
 from utils.metrics import bbox_iou
@@ -17,11 +17,12 @@ from utils.torch_utils import de_parallel
 
 # ------sub loss------
 class BboxLoss(nn.Module):
-    def __init__(self, reg_max, use_dfl=False, iou='CIoU'):
+    def __init__(self, reg_max, use_dfl=False, iou='CIoU', inner_aux=False):
         super().__init__()
         self.reg_max = reg_max
         self.use_dfl = use_dfl
         self.iou = iou
+        self.inner_aux = inner_aux
         assert iou in ('CIoU', 'DIoU', 'GIoU', 'EIoU', 'SIoU')
         # self.use_fel = use_fel
 
@@ -40,11 +41,12 @@ class BboxLoss(nn.Module):
             'box1': pred_bboxes[fg_mask],
             'box2': target_bboxes[fg_mask],
             'xywh': False,
-            self.iou: True
+            self.iou: True,
+            'inner': self.inner_aux
 
         }
 
-        iou = eval('bbox_iou(**iou_param_dict)')
+        iou = bbox_iou(**iou_param_dict)
         loss_iou = ((1.0 - iou) * bbox_weight).sum() / target_scores_sum
 
         # dfl loss
@@ -109,7 +111,7 @@ class FeatureLoss(nn.Module):
 # ------hyper loss------
 class NNDetectionLoss:
     # Compute losses
-    def __init__(self, model, use_dfl=True, iou='CIoU', detector='TOOD'):
+    def __init__(self, model, use_dfl=True, iou='CIoU', detector='TOOD', inner_aux=False):
         device = next(model.parameters()).device  # get model device
         # h = model.hyp  # hyperparameters
 
@@ -143,7 +145,8 @@ class NNDetectionLoss:
             raise NotImplementedError('Unknown detector ')
         self.bbox_loss = BboxLoss(m.reg_max - 1,
                                   use_dfl=use_dfl,
-                                  iou=iou).to(device)
+                                  iou=iou,
+                                  inner_aux=inner_aux).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
         self.use_dfl = use_dfl
 
@@ -227,7 +230,8 @@ class NNDetectionLossDistillFeature:
                  model,
                  use_dfl=True,
                  iou='CIoU',
-                 detector='TOOD'
+                 detector='TOOD',
+                 inner_aux=False
                  ):
         device = next(model.parameters()).device  # get model device
         # h = model.hyp  # hyperparameters
@@ -259,7 +263,10 @@ class NNDetectionLossDistillFeature:
                                                        beta=float(os.getenv('YOLOB', 6.0)))
         else:
             raise NotImplementedError('Unknown detector ')
-        self.bbox_loss = BboxLoss(m.reg_max - 1, use_dfl=use_dfl, iou=iou).to(device)
+        self.bbox_loss = BboxLoss(m.reg_max - 1,
+                                  use_dfl=use_dfl,
+                                  iou=iou,
+                                  inner_aux=inner_aux).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
         self.use_dfl = use_dfl
 

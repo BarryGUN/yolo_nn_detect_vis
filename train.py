@@ -1,4 +1,3 @@
-
 import argparse
 import math
 import os
@@ -8,7 +7,6 @@ import time
 from copy import deepcopy
 from datetime import datetime
 
-
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -17,6 +15,7 @@ import yaml
 from torch.optim import lr_scheduler
 from tqdm import tqdm
 from pathlib import Path
+
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
 
@@ -68,9 +67,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     use_amp, \
     info_only, \
     low_gpu_mem, \
-    model_scale,\
+    model_scale, \
     iou, \
-    detector = \
+    detector, \
+    inner_iou = \
         Path(opt.save_dir), \
         opt.epochs, \
         opt.batch_size, \
@@ -89,7 +89,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.low_gpu_mem, \
         opt.model_scale, \
         opt.iou, \
-        opt.detector
+        opt.detector, \
+        opt.inner_iou
 
     callbacks.run('on_pretrain_routine_start')
 
@@ -284,8 +285,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # compute_loss = NNDetectionLoss(model, use_fel=True, use_qfl=True)  # use fel and qfl
 
     LOGGER.info(f"{colorstr('IoU: ')}{iou}\n"
+                f"{colorstr('Inner-IoU aux: ')}{inner_iou}\n"
                 f"{colorstr('detector: ')}{detector}\n")
-
 
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
@@ -362,7 +363,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 if ema:
                     ema.update(model)
                 last_opt_step = ni
-
 
             # Log
             if RANK in {-1, 0}:
@@ -514,9 +514,10 @@ def parse_opt(known=False):
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
     parser.add_argument('--min-items', type=int, default=0, help='Experimental')
-    parser.add_argument('--iou', type=str, default='CIoU', choices=['CIoU', 'EIoU', 'DIoU', 'IoU','SIoU'],
+    parser.add_argument('--iou', type=str, default='CIoU', choices=['CIoU', 'EIoU', 'DIoU', 'IoU', 'SIoU'],
                         help='select iou loss for train, i.e. CIoU EIoU DIoU IoU or SIoU')
-    parser.add_argument('--detector', type=str, default='TOOD' ,choices=['TOOD', 'ExpFree'],
+    parser.add_argument('--inner-iou', action='store_true', help='use inner IoU')
+    parser.add_argument('--detector', type=str, default='TOOD', choices=['TOOD', 'ExpFree'],
                         help='select detector for train,  i.e. TOOD or ExpFree')
 
     # Logger arguments
