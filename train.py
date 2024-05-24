@@ -279,7 +279,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     stopper, stop = EarlyStopping(patience=opt.patience), False
 
     # init loss class
-    compute_loss = NNDetectionLoss(model, iou=iou, detector=detector)
+    compute_loss = NNDetectionLoss(model,
+                                   iou=iou,
+                                   detector=detector,
+                                   inner_aux=inner_iou)
     # compute_loss = NNDetectionLoss(model, use_qfl=True)  # use qfl for cls_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True)  # use fel for bbox_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True, use_qfl=True)  # use fel and qfl

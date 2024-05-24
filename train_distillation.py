@@ -348,7 +348,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # init loss class
     compute_loss = NNDetectionLossDistillFeature(model=model,
                                                  iou=iou,
-                                                 detector=detector)
+                                                 detector=detector,
+                                                 inner_aux=inner_iou)
     LOGGER.info(f"{colorstr('IoU: ')}{iou}\n"
                 f"{colorstr('Inner-IoU aux: ')}{inner_iou}\n"
                 f"{colorstr('detector: ')}{detector}\n")
