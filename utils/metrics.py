@@ -13,6 +13,7 @@ import torch
 
 from utils import TryExcept, threaded
 
+
 def xyxy2xywh(x):
     # Convert nx4 boxes from [x1, y1, x2, y2] to [x, y, w, h] where xy1=top-left, xy2=bottom-right
     y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
@@ -21,6 +22,7 @@ def xyxy2xywh(x):
     y[..., 2] = x[..., 2] - x[..., 0]  # width
     y[..., 3] = x[..., 3] - x[..., 1]  # height
     return y
+
 
 def fitness(x):
     # Model fitness as a weighted combination of metrics
@@ -290,7 +292,7 @@ def bbox_iou(box1, box2, xywh=True,
                 cw2 = cw ** 2 + eps
                 ch2 = ch ** 2 + eps
                 return iou - (rho2 / c2 + rho_w2 / cw2 + rho_h2 / ch2) if not inner else inner_iou - (
-                            rho2 / c2 + rho_w2 / cw2 + rho_h2 / ch2)
+                        rho2 / c2 + rho_w2 / cw2 + rho_h2 / ch2)
 
             if SIoU:
                 s_cw = (b2_x1 + b2_x2 - b1_x1 - b1_x2) * 0.5 + eps
@@ -309,12 +311,12 @@ def bbox_iou(box1, box2, xywh=True,
                 omiga_h = torch.abs(h1 - h2) / torch.max(h1, h2)
                 shape_cost = torch.pow(1 - torch.exp(-1 * omiga_w), 4) + torch.pow(1 - torch.exp(-1 * omiga_h), 4)
                 return iou - 0.5 * (distance_cost + shape_cost) if not inner else inner_iou - 0.5 * (
-                            distance_cost + shape_cost)
+                        distance_cost + shape_cost)
 
             return iou - rho2 / c2 if not inner else inner_iou - rho2 / c2  # DIoU
         c_area = cw * ch + eps  # convex area
         return iou - (c_area - union) / c_area if not inner else inner_iou - (
-                    c_area - union) / c_area  # GIoU https://arxiv.org/pdf/1902.09630.pdf
+                c_area - union) / c_area  # GIoU https://arxiv.org/pdf/1902.09630.pdf
     return iou if not inner else inner_iou  # IoU
 
 
