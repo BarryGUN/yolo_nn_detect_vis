@@ -10,9 +10,9 @@ weight_decay: 0.0005  # optimizer weight decay 5e-4
 warmup_epochs: 3.0  # warmup epochs (fractions ok)
 warmup_momentum: 0.8  # warmup initial momentum
 warmup_bias_lr: 0.1  # warmup initial bias lr
-box: 2.0  # box loss gain
+box: 7.5  # box loss gain
 cls: 1.0  # cls loss gain
-dfl: 0.25  # dfl loss gain
+dfl: 2.5  # dfl loss gain
 hsv_h: 0.015  # image HSV-Hue augmentation (fraction)
 hsv_s: 0.7  # image HSV-Saturation augmentation (fraction)
 hsv_v: 0.4  # image HSV-Value augmentation (fraction)
