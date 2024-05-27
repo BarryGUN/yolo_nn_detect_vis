@@ -238,13 +238,8 @@ def bbox_iou(box1, box2, xywh=True,
              CIoU=False,
              EIoU=False,
              SIoU=False,
-             inner=False,
              eps=1e-7):
     # Returns Intersection over Union (IoU) of box1(1,4) to box2(n,4)
-
-    inner_iou = None
-    if inner:
-        inner_iou = bbox_inner(box1, box2, xywh=xywh)
 
     # Get the coordinates of bounding boxes
     if xywh:  # transform from xywh to xyxy
@@ -284,15 +279,14 @@ def bbox_iou(box1, box2, xywh=True,
                 with torch.no_grad():
                     alpha = v / (v - iou + (1 + eps))
 
-                return iou - (rho2 / c2 + v * alpha) if not inner else inner_iou - (rho2 / c2 + v * alpha)  # CIoU
+                return iou - (rho2 / c2 + v * alpha)   # CIoU
 
             if EIoU:
                 rho_w2 = ((b2_x2 - b2_x1) - (b1_x2 - b1_x1)) ** 2
                 rho_h2 = ((b2_y2 - b2_y1) - (b1_y2 - b1_y1)) ** 2
                 cw2 = cw ** 2 + eps
                 ch2 = ch ** 2 + eps
-                return iou - (rho2 / c2 + rho_w2 / cw2 + rho_h2 / ch2) if not inner else inner_iou - (
-                        rho2 / c2 + rho_w2 / cw2 + rho_h2 / ch2)
+                return iou - (rho2 / c2 + rho_w2 / cw2 + rho_h2 / ch2)
 
             if SIoU:
                 s_cw = (b2_x1 + b2_x2 - b1_x1 - b1_x2) * 0.5 + eps
@@ -310,31 +304,14 @@ def bbox_iou(box1, box2, xywh=True,
                 omiga_w = torch.abs(w1 - w2) / torch.max(w1, w2)
                 omiga_h = torch.abs(h1 - h2) / torch.max(h1, h2)
                 shape_cost = torch.pow(1 - torch.exp(-1 * omiga_w), 4) + torch.pow(1 - torch.exp(-1 * omiga_h), 4)
-                return iou - 0.5 * (distance_cost + shape_cost) if not inner else inner_iou - 0.5 * (
-                        distance_cost + shape_cost)
+                return iou - 0.5 * (distance_cost + shape_cost)
 
-            return iou - rho2 / c2 if not inner else inner_iou - rho2 / c2  # DIoU
+            return iou - rho2 / c2   # DIoU
         c_area = cw * ch + eps  # convex area
-        return iou - (c_area - union) / c_area if not inner else inner_iou - (
-                c_area - union) / c_area  # GIoU https://arxiv.org/pdf/1902.09630.pdf
-    return iou if not inner else inner_iou  # IoU
+        return iou - (c_area - union) / c_area   # GIoU https://arxiv.org/pdf/1902.09630.pdf
+    return iou   # IoU
 
 
-def bbox_inner(box1, box2, ratio=1.0, eps=1e-7, xywh=True):
-    if not xywh:
-        box1 = xyxy2xywh(box1)
-        box2 = xyxy2xywh(box2)
-    (x1, y1, w1, h1), (x2, y2, w2, h2) = box1.chunk(4, -1), box2.chunk(4, -1)
-    w1_, h1_, w2_, h2_ = w1 / 2, h1 / 2, w2 / 2, h2 / 2
-    # Inner-IoU
-    inner_b1_x1, inner_b1_x2, inner_b1_y1, inner_b1_y2 = x1 - w1_ * ratio, x1 + w1_ * ratio, \
-                                                         y1 - h1_ * ratio, y1 + h1_ * ratio
-    inner_b2_x1, inner_b2_x2, inner_b2_y1, inner_b2_y2 = x2 - w2_ * ratio, x2 + w2_ * ratio, \
-                                                         y2 - h2_ * ratio, y2 + h2_ * ratio
-    inner_inter = (torch.min(inner_b1_x2, inner_b2_x2) - torch.max(inner_b1_x1, inner_b2_x1)).clamp(0) * \
-                  (torch.min(inner_b1_y2, inner_b2_y2) - torch.max(inner_b1_y1, inner_b2_y1)).clamp(0)
-    inner_union = w1 * ratio * h1 * ratio + w2 * ratio * h2 * ratio - inner_inter + eps
-    return inner_inter / inner_union
 
 
 def box_iou(box1, box2, eps=1e-7):

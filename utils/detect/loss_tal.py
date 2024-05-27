@@ -17,12 +17,11 @@ from utils.torch_utils import de_parallel
 
 # ------sub loss------
 class BboxLoss(nn.Module):
-    def __init__(self, reg_max, use_dfl=False, iou='CIoU', inner_aux=False):
+    def __init__(self, reg_max, use_dfl=False, iou='CIoU'):
         super().__init__()
         self.reg_max = reg_max
         self.use_dfl = use_dfl
         self.iou = iou
-        self.inner_aux = inner_aux
         assert iou in ('CIoU', 'DIoU', 'GIoU', 'EIoU', 'SIoU')
         # self.use_fel = use_fel
 
@@ -42,7 +41,6 @@ class BboxLoss(nn.Module):
             'box2': target_bboxes[fg_mask],
             'xywh': False,
             self.iou: True,
-            'inner': self.inner_aux
 
         }
 
@@ -111,7 +109,7 @@ class FeatureLoss(nn.Module):
 # ------hyper loss------
 class NNDetectionLoss:
     # Compute losses
-    def __init__(self, model, use_dfl=True, iou='CIoU', detector='TOOD', inner_aux=False):
+    def __init__(self, model, use_dfl=True, iou='CIoU' ):
         device = next(model.parameters()).device  # get model device
         # h = model.hyp  # hyperparameters
 
@@ -129,24 +127,14 @@ class NNDetectionLoss:
         self.nl = m.nl  # number of layers
         self.device = device
 
-        # Task-Aligned Assigner
-        assert detector in ('TOOD', 'ExpFree')
-        if detector == 'TOOD':
-            self.assigner = TaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
-                                                num_classes=self.nc,
-                                                alpha=float(os.getenv('YOLOA', 0.5)),
-                                                beta=float(os.getenv('YOLOB', 6.0)))
-        elif detector == 'ExpFree':
-            self.assigner = ExpFreeTaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
-                                                num_classes=self.nc,
-                                                alpha=float(os.getenv('YOLOA', 0.5)),
-                                                beta=float(os.getenv('YOLOB', 0.25)))    # 0.1
-        else:
-            raise NotImplementedError('Unknown detector ')
+        self.assigner = TaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
+                                            num_classes=self.nc,
+                                            alpha=float(os.getenv('YOLOA', 0.5)),
+                                            beta=float(os.getenv('YOLOB', 6.0)))
+
         self.bbox_loss = BboxLoss(m.reg_max - 1,
                                   use_dfl=use_dfl,
-                                  iou=iou,
-                                  inner_aux=inner_aux).to(device)
+                                  iou=iou).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
         self.use_dfl = use_dfl
 
@@ -230,8 +218,6 @@ class NNDetectionLossDistillFeature:
                  model,
                  use_dfl=True,
                  iou='CIoU',
-                 detector='TOOD',
-                 inner_aux=False
                  ):
         device = next(model.parameters()).device  # get model device
         # h = model.hyp  # hyperparameters
@@ -250,23 +236,16 @@ class NNDetectionLossDistillFeature:
         self.device = device
 
         # Task-Aligned Assigner
-        assert detector in ('TOOD', 'ExpFree')
-        if detector == 'TOOD':
-            self.assigner = TaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
-                                                num_classes=self.nc,
-                                                alpha=float(os.getenv('YOLOA', 0.5)),
-                                                beta=float(os.getenv('YOLOB', 6.0)))
-        elif detector == 'ExpFree':
-            self.assigner = ExpFreeTaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
-                                                       num_classes=self.nc,
-                                                       alpha=float(os.getenv('YOLOA', 0.5)),
-                                                       beta=float(os.getenv('YOLOB', 6.0)))
-        else:
-            raise NotImplementedError('Unknown detector ')
+
+        self.assigner = TaskAlignedAssigner(topk=int(os.getenv('YOLOM', 10)),
+                                            num_classes=self.nc,
+                                            alpha=float(os.getenv('YOLOA', 0.5)),
+                                            beta=float(os.getenv('YOLOB', 6.0)))
+
+
         self.bbox_loss = BboxLoss(m.reg_max - 1,
                                   use_dfl=use_dfl,
-                                  iou=iou,
-                                  inner_aux=inner_aux).to(device)
+                                  iou=iou).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
         self.use_dfl = use_dfl
 

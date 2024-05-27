@@ -10,7 +10,6 @@ config = {
     'model-scale': 'm',
     'iou': 'CIoU',
     'optimizer': 'SGD',
-    'detector': 'TOOD',
     'epochs': 600,
     'cos-lr': True,
     'low-gpu-mem': True,

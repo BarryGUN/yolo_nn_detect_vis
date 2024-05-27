@@ -73,9 +73,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     distill_stop_epochs, \
     inject_layers, \
     no_distill_gain_decay, \
-    iou, \
-    detector, \
-    inner_iou = \
+    iou = \
         Path(opt.save_dir), \
         opt.epochs, \
         opt.batch_size, \
@@ -97,9 +95,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.distill_stop_epochs, \
         opt.inject_layers, \
         opt.no_distill_gain_decay, \
-        opt.iou, \
-        opt.detector, \
-        opt.inner_iou
+        opt.iou,
 
     callbacks.run('on_pretrain_routine_start')
 
@@ -347,12 +343,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # init loss class
     compute_loss = NNDetectionLossDistillFeature(model=model,
-                                                 iou=iou,
-                                                 detector=detector,
-                                                 inner_aux=inner_iou)
-    LOGGER.info(f"{colorstr('IoU: ')}{iou}\n"
-                f"{colorstr('Inner-IoU aux: ')}{inner_iou}\n"
-                f"{colorstr('detector: ')}{detector}\n")
+                                                 iou=iou)
+    LOGGER.info(f"{colorstr('IoU: ')}{iou}\n")
 
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
@@ -623,9 +615,6 @@ def parse_opt(known=False):
     parser.add_argument('--min-items', type=int, default=0, help='Experimental')
     parser.add_argument('--iou', type=str, default='CIoU', choices=['CIoU', 'EIoU', 'DIoU', 'IoU', 'SIoU'],
                         help='select iou loss for train, i.e. CIoU EIoU DIoU IoU or SIoU')
-    parser.add_argument('--detector', type=str, default='TOOD', choices=['TOOD', 'ExpFree'],
-                        help='select detector for train,  i.e. TOOD or ExpFree')
-    parser.add_argument('--inner-iou', action='store_true', help='use inner IoU')
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')
     parser.add_argument('--upload_dataset', nargs='?', const=True, default=False, help='Upload data, "val" option')

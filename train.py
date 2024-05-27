@@ -68,9 +68,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     info_only, \
     low_gpu_mem, \
     model_scale, \
-    iou, \
-    detector, \
-    inner_iou = \
+    iou  = \
         Path(opt.save_dir), \
         opt.epochs, \
         opt.batch_size, \
@@ -89,8 +87,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.low_gpu_mem, \
         opt.model_scale, \
         opt.iou, \
-        opt.detector, \
-        opt.inner_iou
 
     callbacks.run('on_pretrain_routine_start')
 
@@ -280,16 +276,13 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # init loss class
     compute_loss = NNDetectionLoss(model,
-                                   iou=iou,
-                                   detector=detector,
-                                   inner_aux=inner_iou)
+                                   iou=iou)
     # compute_loss = NNDetectionLoss(model, use_qfl=True)  # use qfl for cls_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True)  # use fel for bbox_loss
     # compute_loss = NNDetectionLoss(model, use_fel=True, use_qfl=True)  # use fel and qfl
 
-    LOGGER.info(f"{colorstr('IoU: ')}{iou}\n"
-                f"{colorstr('Inner-IoU aux: ')}{inner_iou}\n"
-                f"{colorstr('detector: ')}{detector}\n")
+    LOGGER.info(f"{colorstr('IoU: ')}{iou}\n")
+
 
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
@@ -519,9 +512,7 @@ def parse_opt(known=False):
     parser.add_argument('--min-items', type=int, default=0, help='Experimental')
     parser.add_argument('--iou', type=str, default='CIoU', choices=['CIoU', 'EIoU', 'DIoU', 'IoU', 'SIoU'],
                         help='select iou loss for train, i.e. CIoU EIoU DIoU IoU or SIoU')
-    parser.add_argument('--inner-iou', action='store_true', help='use inner IoU')
-    parser.add_argument('--detector', type=str, default='TOOD', choices=['TOOD', 'ExpFree'],
-                        help='select detector for train,  i.e. TOOD or ExpFree')
+
 
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')
