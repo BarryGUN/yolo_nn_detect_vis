@@ -593,8 +593,8 @@ def run(
     # Finish
     f = [str(x) for x in f if x]  # filter out '' and None
     if any(f):
-        cls, det, seg = (isinstance(model, x) for x in (DetectionModel, ))  # type
-        dir = Path('segment' if seg else 'classify' if cls else '')
+        det = (isinstance(model, x) for x in (DetectionModel,))  # type
+        dir = Path( '')
         h = '--half' if half else ''  # --half FP16 inference arg
         s = "# WARNING ⚠️ ClassificationModel not yet supported for PyTorch Hub AutoShape inference" if cls else \
             "# WARNING ⚠️ SegmentationModel not yet supported for PyTorch Hub AutoShape inference" if seg else ''
