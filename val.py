@@ -57,7 +57,7 @@ def save_one_txt(predn, save_conf, shape, file):
             f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
 
-def save_one_json(predn, jdict, path, class_map):
+def save_one_json(predn, jdict, path, class_map, is_coco=True):
     # Save one JSON result {"image_id": 42, "category_id": 18, "bbox": [258.15, 41.29, 348.26, 243.78], "score": 0.236}
     image_id = int(path.stem) if path.stem.isnumeric() else path.stem
     box = xyxy2xywh(predn[:, :4])  # xywh
@@ -65,7 +65,7 @@ def save_one_json(predn, jdict, path, class_map):
     for p, b in zip(predn.tolist(), box.tolist()):
         jdict.append({
             'image_id': image_id,
-            'category_id': class_map[int(p[5])],
+            'category_id': class_map[int(p[5])] if is_coco else int(p[5]),
             'bbox': [round(x, 3) for x in b],
             'score': round(p[4], 5)})
 
@@ -269,7 +269,7 @@ def run(
             if save_txt:
                 save_one_txt(predn, save_conf, shape, file=save_dir / 'labels' / f'{path.stem}.txt')
             if save_json:
-                save_one_json(predn, jdict, path, class_map)  # append to COCO-JSON dictionary
+                save_one_json(predn, jdict, path, class_map, is_coco)  # append to COCO-JSON dictionary
             callbacks.run('on_val_image_end', pred, predn, path, names, im[si])
 
         # Plot images
