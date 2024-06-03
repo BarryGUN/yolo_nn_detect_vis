@@ -523,7 +523,7 @@ def run(
     device = select_device(device)
     if half:
         assert not coreml, '--half only compatible with GPU export, i.e. use --device 0'
-        assert not dynamic and device.type != 'cpu', '--half not compatible with --dynamic, i.e. use either --half or --dynamic but not both'
+        assert not (dynamic and device.type == 'cpu'), '--half not compatible with --dynamic, i.e. use either --half or --dynamic but not both'
     model = attempt_load(weights, device=device, inplace=True, fuse=True)  # load FP32 model
 
     # Checks
